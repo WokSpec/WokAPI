@@ -7,5 +7,5 @@ compatibility_flags = ["nodejs_compat"]
 enabled = true
 
 [[routes]]
-pattern = "api.wokspec.org/*"
-zone_name = "wokspec.org"
+pattern = "api.wokspec.org"
+custom_domain = true
