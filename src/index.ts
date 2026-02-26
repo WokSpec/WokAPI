@@ -91,17 +91,112 @@ app.use(
   }),
 );
 
-// GET / — service info
-app.get('/', (c) =>
-  c.json({
+// GET / — service info (HTML for browsers, JSON for API clients)
+app.get('/', (c) => {
+  const accept = c.req.header('Accept') ?? '';
+  if (accept.includes('text/html')) {
+    return c.html(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WokAPI</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #0a0a0a;
+      color: #e8e8e8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .card {
+      max-width: 560px;
+      width: 100%;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #22c55e;
+      border: 1px solid #22c55e33;
+      background: #22c55e0d;
+      padding: 3px 10px;
+      border-radius: 999px;
+      margin-bottom: 1.5rem;
+    }
+    h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 0.5rem; }
+    .sub { color: #888; font-size: 0.95rem; margin-bottom: 2.5rem; line-height: 1.6; }
+    .endpoints { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 2.5rem; }
+    .ep {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: #141414;
+      border: 1px solid #1f1f1f;
+      border-radius: 8px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.82rem;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s;
+    }
+    .ep:hover { border-color: #333; }
+    .method { color: #22c55e; font-weight: 700; min-width: 28px; }
+    .path { color: #e8e8e8; }
+    .desc { color: #555; margin-left: auto; font-family: inherit; font-size: 0.78rem; }
+    .footer { color: #444; font-size: 0.8rem; }
+    .footer a { color: #666; text-decoration: none; }
+    .footer a:hover { color: #888; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">v1 · live</span>
+    <h1>WokAPI</h1>
+    <p class="sub">Platform API for WokSpec — product registry and real-time status for all Wok products.</p>
+    <div class="endpoints">
+      <a class="ep" href="/health">
+        <span class="method">GET</span>
+        <span class="path">/health</span>
+        <span class="desc">API health</span>
+      </a>
+      <a class="ep" href="/v1/projects">
+        <span class="method">GET</span>
+        <span class="path">/v1/projects</span>
+        <span class="desc">Product registry</span>
+      </a>
+      <a class="ep" href="/v1/status">
+        <span class="method">GET</span>
+        <span class="path">/v1/status</span>
+        <span class="desc">Aggregate health</span>
+      </a>
+    </div>
+    <p class="footer">
+      <a href="https://wokspec.org">wokspec.org</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/WokSpec/WokAPI">GitHub</a>
+    </p>
+  </div>
+</body>
+</html>`);
+  }
+
+  return c.json({
     name: 'WokAPI',
     version: '1',
     description: 'WokSpec platform API — product registry and status.',
     docs: 'https://wokspec.org/docs',
     status: 'https://api.wokspec.org/v1/status',
     projects: 'https://api.wokspec.org/v1/projects',
-  }),
-);
+  });
+});
 
 // GET /health — fast health check (no external calls)
 app.get('/health', (c) =>
