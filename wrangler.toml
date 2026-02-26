@@ -1,0 +1,11 @@
+name = "wokapi"
+main = "src/index.ts"
+compatibility_date = "2026-02-20"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[[routes]]
+pattern = "api.wokspec.org/*"
+zone_name = "wokspec.org"
