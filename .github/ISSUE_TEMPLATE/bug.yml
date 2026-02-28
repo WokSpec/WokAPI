@@ -1,0 +1,26 @@
+name: Bug Report
+description: Report a bug in WokAPI
+labels: ["bug"]
+body:
+  - type: input
+    id: endpoint
+    attributes:
+      label: Affected Endpoint
+      placeholder: "GET /v1/auth/github"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      placeholder: |
+        1. Call POST /v1/...
+        2. With body {...}
+        3. See error

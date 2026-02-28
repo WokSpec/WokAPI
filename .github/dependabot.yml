@@ -1,0 +1,9 @@
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "hono"
+        update-types: ["version-update:semver-major"]

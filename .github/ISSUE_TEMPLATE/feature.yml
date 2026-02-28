@@ -1,0 +1,16 @@
+name: Feature Request
+description: Request a new endpoint or API capability
+labels: ["enhancement"]
+body:
+  - type: input
+    id: endpoint
+    attributes:
+      label: Proposed Endpoint / Feature
+      placeholder: "POST /v1/users/preferences"
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What problem does this solve?
+    validations:
+      required: true
