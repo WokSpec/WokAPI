@@ -45,6 +45,15 @@ const PRODUCTS: WokProduct[] = [
     status: 'live',
     tags: ['ai', 'news', 'media'],
   },
+  {
+    slug: 'eral',
+    name: 'Eral',
+    description: 'AI layer that integrates across all WokSpec products and external sites.',
+    url: 'https://eral.wokspec.org',
+    health_url: 'https://eral.wokspec.org/api/v1/status',
+    status: 'live',
+    tags: ['ai', 'assistant', 'integration'],
+  },
 ];
 
 // ── Health types ─────────────────────────────────────────────────────────────
@@ -87,7 +96,7 @@ const app = new Hono();
 app.use(
   '*',
   cors({
-    origin: ['https://wokspec.org', 'https://www.wokspec.org'],
+    origin: ['https://wokspec.org', 'https://www.wokspec.org', 'https://eral.wokspec.org'],
     allowMethods: ['GET', 'POST', 'OPTIONS'],
     allowHeaders: ['Content-Type'],
     credentials: true,
