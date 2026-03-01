@@ -9,3 +9,12 @@ enabled = true
 [[routes]]
 pattern = "api.wokspec.org"
 custom_domain = true
+
+[[kv_namespaces]]
+binding = "OAUTH_STATE"
+id = "PLACEHOLDER_KV_ID"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "wokspec-auth"
+database_id = "PLACEHOLDER_D1_ID"

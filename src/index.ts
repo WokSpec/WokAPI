@@ -3,6 +3,7 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { authRouter } from './routes/auth';
 
 // ── Product registry ─────────────────────────────────────────────────────────
 
@@ -87,9 +88,13 @@ app.use(
   '*',
   cors({
     origin: ['https://wokspec.org', 'https://www.wokspec.org'],
-    allowMethods: ['GET', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Content-Type'],
+    credentials: true,
   }),
 );
+
+app.route('/v1/auth', authRouter);
 
 // GET / — service info (HTML for browsers, JSON for API clients)
 app.get('/', (c) => {

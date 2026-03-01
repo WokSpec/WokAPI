@@ -1,0 +1,1 @@
+export const CONSULTATION_PRICE_CENTS = 5000; // $50 USD
