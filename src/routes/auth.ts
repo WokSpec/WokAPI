@@ -1,310 +1,288 @@
-// Auth routes: GitHub / Google / Discord OAuth + JWT session management
-// Session cookie: wokspec_session (httpOnly, Secure, SameSite=Lax, 7-day)
-
 import { Hono } from 'hono';
-import { signJWT, verifyJWT } from '../lib/jwt';
-import type { Env, AuthUser } from '../types';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
+import type { Env } from '../types';
+import { signAccessToken, verifyToken, generateRefreshToken, hashToken } from '../lib/jwt';
+import {
+  upsertUser, upsertOAuthAccount,
+  createSession, findSessionByRefreshHash, deleteSessionByRefreshHash,
+  deleteSession, findUserById, pruneExpiredSessions,
+} from '../lib/db';
+import { rateLimit } from '../middleware';
+import { AUTH_COOKIE_NAME, AUTH_REFRESH_COOKIE_NAME, ACCESS_TOKEN_TTL, REFRESH_TOKEN_TTL } from '../lib/constants';
+
+const SITE_URL = 'https://wokspec.org';
+
+// Allowed redirect destinations after OAuth
+const ALLOWED_REDIRECT_ORIGINS = [
+  'https://wokspec.org',
+  'https://www.wokspec.org',
+  'https://wokgen.wokspec.org',
+  'https://wokpost.wokspec.org',
+  'https://chopsticks.wokspec.org',
+  'https://eral.wokspec.org',
+];
+
+function sanitizeRedirectTo(redirectTo: string | null | undefined): string {
+  if (!redirectTo) return SITE_URL;
+  try {
+    const url = new URL(redirectTo);
+    if (ALLOWED_REDIRECT_ORIGINS.some((o) => redirectTo.startsWith(o))) return redirectTo;
+  } catch { /* invalid URL */ }
+  return SITE_URL;
+}
 
 const auth = new Hono<{ Bindings: Env }>();
 
-const REDIRECT_BASE = 'https://api.wokspec.org/v1/auth';
-const POST_LOGIN_REDIRECT = 'https://wokspec.org/account';
-const COOKIE_NAME = 'wokspec_session';
-const SESSION_TTL = 60 * 60 * 24 * 7; // 7 days in seconds
+// ===== GITHUB OAUTH =====
+auth.get('/github', rateLimit('auth'), async (c) => {
+  const redirectTo = sanitizeRedirectTo(c.req.query('redirect_to'));
+  const redirectExtension = c.req.query('redirect_extension') === 'true';
+  const state = btoa(JSON.stringify({ redirectTo, redirectExtension, nonce: crypto.randomUUID() }));
+  await c.env.KV_SESSIONS.put(`oauth_state:${state}`, '1', { expirationTtl: 300 });
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function sessionCookie(token: string): string {
-  return `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL}`;
-}
-
-function clearCookie(): string {
-  return `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
-}
-
-async function generateState(kv: KVNamespace): Promise<string> {
-  const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-  await kv.put(`oauth_state:${state}`, '1', { expirationTtl: 600 });
-  return state;
-}
-
-async function consumeState(kv: KVNamespace, state: string): Promise<boolean> {
-  const val = await kv.get(`oauth_state:${state}`);
-  if (!val) return false;
-  await kv.delete(`oauth_state:${state}`);
-  return true;
-}
-
-async function createSession(env: Env, userId: string): Promise<string> {
-  const exp = Math.floor(Date.now() / 1000) + SESSION_TTL;
-  return signJWT({ sub: userId, exp }, env.JWT_SECRET);
-}
-
-/** Upsert user + oauth_account, return user id */
-async function upsertUser(
-  db: D1Database,
-  provider: 'github' | 'google' | 'discord',
-  providerUserId: string,
-  profile: { email: string | null; username: string | null; displayName: string | null; avatarUrl: string | null },
-  accessToken: string,
-): Promise<string> {
-  // Find existing oauth_account
-  const existing = await db
-    .prepare('SELECT user_id FROM oauth_accounts WHERE provider = ? AND provider_user_id = ?')
-    .bind(provider, providerUserId)
-    .first<{ user_id: string }>();
-
-  if (existing) {
-    // Update access token + user profile
-    await db
-      .prepare('UPDATE oauth_accounts SET access_token = ? WHERE provider = ? AND provider_user_id = ?')
-      .bind(accessToken, provider, providerUserId)
-      .run();
-    await db
-      .prepare(
-        'UPDATE users SET email = COALESCE(?, email), display_name = COALESCE(?, display_name), avatar_url = COALESCE(?, avatar_url), updated_at = datetime(\'now\') WHERE id = ?',
-      )
-      .bind(profile.email, profile.displayName, profile.avatarUrl, existing.user_id)
-      .run();
-    return existing.user_id;
-  }
-
-  // Create new user
-  const userId = crypto.randomUUID().replace(/-/g, '');
-  await db
-    .prepare(
-      'INSERT INTO users (id, email, username, display_name, avatar_url) VALUES (?, ?, ?, ?, ?)',
-    )
-    .bind(userId, profile.email, profile.username, profile.displayName, profile.avatarUrl)
-    .run();
-  await db
-    .prepare(
-      'INSERT INTO oauth_accounts (id, user_id, provider, provider_user_id, access_token) VALUES (?, ?, ?, ?, ?)',
-    )
-    .bind(crypto.randomUUID().replace(/-/g, ''), userId, provider, providerUserId, accessToken)
-    .run();
-  return userId;
-}
-
-// ── GitHub ───────────────────────────────────────────────────────────────────
-
-auth.get('/github', async (c) => {
-  const state = await generateState(c.env.OAUTH_STATE);
-  const params = new URLSearchParams({
-    client_id: c.env.GITHUB_CLIENT_ID,
-    redirect_uri: `${REDIRECT_BASE}/github/callback`,
-    scope: 'user:email',
-    state,
-  });
-  return c.redirect(`https://github.com/login/oauth/authorize?${params}`);
+  const url = new URL('https://github.com/login/oauth/authorize');
+  url.searchParams.set('client_id', c.env.GITHUB_CLIENT_ID);
+  url.searchParams.set('redirect_uri', `https://api.wokspec.org/v1/auth/github/callback`);
+  url.searchParams.set('scope', 'read:user user:email');
+  url.searchParams.set('state', state);
+  return c.redirect(url.toString());
 });
 
-auth.get('/github/callback', async (c) => {
+auth.get('/github/callback', rateLimit('auth'), async (c) => {
   const { code, state } = c.req.query();
-  if (!code || !state) return c.json({ error: 'Missing code or state' }, 400);
-  if (!(await consumeState(c.env.OAUTH_STATE, state))) return c.json({ error: 'Invalid state' }, 400);
+  if (!code || !state) return c.json({ data: null, error: { code: 'INVALID_CALLBACK', message: 'Missing code or state', status: 400 } }, 400);
+
+  const stateValid = await c.env.KV_SESSIONS.get(`oauth_state:${state}`);
+  if (!stateValid) return c.json({ data: null, error: { code: 'INVALID_STATE', message: 'Invalid OAuth state', status: 400 } }, 400);
+  await c.env.KV_SESSIONS.delete(`oauth_state:${state}`);
+
+  let parsedState: { redirectTo: string; redirectExtension?: boolean };
+  try { parsedState = JSON.parse(atob(state)); } catch { parsedState = { redirectTo: SITE_URL }; }
 
   // Exchange code for token
   const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: c.env.GITHUB_CLIENT_ID,
-      client_secret: c.env.GITHUB_CLIENT_SECRET,
-      code,
-      redirect_uri: `${REDIRECT_BASE}/github/callback`,
-    }),
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ client_id: c.env.GITHUB_CLIENT_ID, client_secret: c.env.GITHUB_CLIENT_SECRET, code }),
   });
   const tokenData = await tokenRes.json<{ access_token?: string; error?: string }>();
-  if (!tokenData.access_token) return c.json({ error: 'Token exchange failed' }, 400);
+  if (!tokenData.access_token) return c.json({ data: null, error: { code: 'OAUTH_ERROR', message: 'OAuth token exchange failed', status: 400 } }, 400);
 
-  // Fetch user profile
+  // Get user info
   const userRes = await fetch('https://api.github.com/user', {
-    headers: { Authorization: `Bearer ${tokenData.access_token}`, 'User-Agent': 'WokAPI/1.0' },
+    headers: { Authorization: `Bearer ${tokenData.access_token}`, 'User-Agent': 'WokSpec/1.0' },
   });
-  const ghUser = await userRes.json<{
-    id: number;
-    login: string;
-    name: string | null;
-    avatar_url: string;
-    email: string | null;
-  }>();
+  const githubUser = await userRes.json<{ id: number; email: string | null; name: string; avatar_url: string; login: string }>();
 
-  // Fetch primary email if not on profile
-  let email = ghUser.email;
+  // Get primary email if not public
+  let email = githubUser.email;
   if (!email) {
-    const emailRes = await fetch('https://api.github.com/user/emails', {
-      headers: { Authorization: `Bearer ${tokenData.access_token}`, 'User-Agent': 'WokAPI/1.0' },
+    const emailsRes = await fetch('https://api.github.com/user/emails', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}`, 'User-Agent': 'WokSpec/1.0' },
     });
-    const emails = await emailRes.json<{ email: string; primary: boolean; verified: boolean }[]>();
-    email = emails.find((e) => e.primary && e.verified)?.email ?? emails[0]?.email ?? null;
+    const emails = await emailsRes.json<{ email: string; primary: boolean; verified: boolean }[]>();
+    email = emails.find(e => e.primary && e.verified)?.email ?? null;
   }
+  if (!email) return c.json({ data: null, error: { code: 'NO_EMAIL', message: 'No verified email found', status: 400 } }, 400);
 
-  const userId = await upsertUser(
-    c.env.DB,
-    'github',
-    String(ghUser.id),
-    { email, username: ghUser.login, displayName: ghUser.name, avatarUrl: ghUser.avatar_url },
-    tokenData.access_token,
-  );
+  const user = await upsertUser(c.env.D1_AUTH, { email, displayName: githubUser.name ?? githubUser.login, avatarUrl: githubUser.avatar_url });
+  await upsertOAuthAccount(c.env.D1_AUTH, { userId: user.id, provider: 'github', providerAccountId: String(githubUser.id), accessToken: tokenData.access_token });
 
-  const token = await createSession(c.env, userId);
-  return new Response(null, {
-    status: 302,
-    headers: { Location: POST_LOGIN_REDIRECT, 'Set-Cookie': sessionCookie(token) },
-  });
+  return issueTokensAndRedirect(c, user, sanitizeRedirectTo(parsedState.redirectTo), parsedState.redirectExtension);
 });
 
-// ── Google ───────────────────────────────────────────────────────────────────
+// ===== GOOGLE OAUTH =====
+auth.get('/google', rateLimit('auth'), async (c) => {
+  const redirectTo = sanitizeRedirectTo(c.req.query('redirect_to'));
+  const redirectExtension = c.req.query('redirect_extension') === 'true';
+  const state = btoa(JSON.stringify({ redirectTo, redirectExtension, nonce: crypto.randomUUID() }));
+  await c.env.KV_SESSIONS.put(`oauth_state:${state}`, '1', { expirationTtl: 300 });
 
-auth.get('/google', async (c) => {
-  const state = await generateState(c.env.OAUTH_STATE);
-  const params = new URLSearchParams({
-    client_id: c.env.GOOGLE_CLIENT_ID,
-    redirect_uri: `${REDIRECT_BASE}/google/callback`,
-    scope: 'openid email profile',
-    response_type: 'code',
-    state,
-  });
-  return c.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  url.searchParams.set('client_id', c.env.GOOGLE_CLIENT_ID);
+  url.searchParams.set('redirect_uri', 'https://api.wokspec.org/v1/auth/google/callback');
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', 'openid email profile');
+  url.searchParams.set('state', state);
+  url.searchParams.set('access_type', 'offline');
+  return c.redirect(url.toString());
 });
 
-auth.get('/google/callback', async (c) => {
+auth.get('/google/callback', rateLimit('auth'), async (c) => {
   const { code, state } = c.req.query();
-  if (!code || !state) return c.json({ error: 'Missing code or state' }, 400);
-  if (!(await consumeState(c.env.OAUTH_STATE, state))) return c.json({ error: 'Invalid state' }, 400);
+  if (!code || !state) return c.json({ data: null, error: { code: 'INVALID_CALLBACK', message: 'Missing code or state', status: 400 } }, 400);
+
+  const stateValid = await c.env.KV_SESSIONS.get(`oauth_state:${state}`);
+  if (!stateValid) return c.json({ data: null, error: { code: 'INVALID_STATE', message: 'Invalid OAuth state', status: 400 } }, 400);
+  await c.env.KV_SESSIONS.delete(`oauth_state:${state}`);
+
+  let parsedState: { redirectTo: string; redirectExtension?: boolean };
+  try { parsedState = JSON.parse(atob(state)); } catch { parsedState = { redirectTo: SITE_URL }; }
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code,
-      client_id: c.env.GOOGLE_CLIENT_ID,
-      client_secret: c.env.GOOGLE_CLIENT_SECRET,
-      redirect_uri: `${REDIRECT_BASE}/google/callback`,
-      grant_type: 'authorization_code',
-    }),
+    body: new URLSearchParams({ code, client_id: c.env.GOOGLE_CLIENT_ID, client_secret: c.env.GOOGLE_CLIENT_SECRET, redirect_uri: 'https://api.wokspec.org/v1/auth/google/callback', grant_type: 'authorization_code' }),
   });
-  const tokenData = await tokenRes.json<{ access_token?: string; error?: string }>();
-  if (!tokenData.access_token) return c.json({ error: 'Token exchange failed' }, 400);
+  const tokenData = await tokenRes.json<{ access_token?: string; id_token?: string }>();
+  if (!tokenData.access_token) return c.json({ data: null, error: { code: 'OAUTH_ERROR', message: 'Token exchange failed', status: 400 } }, 400);
 
   const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
     headers: { Authorization: `Bearer ${tokenData.access_token}` },
   });
-  const gUser = await userRes.json<{
-    id: string;
-    email: string;
-    name: string;
-    picture: string;
-  }>();
+  const googleUser = await userRes.json<{ id: string; email: string; name: string; picture: string }>();
 
-  const userId = await upsertUser(
-    c.env.DB,
-    'google',
-    gUser.id,
-    { email: gUser.email, username: null, displayName: gUser.name, avatarUrl: gUser.picture },
-    tokenData.access_token,
-  );
+  const user = await upsertUser(c.env.D1_AUTH, { email: googleUser.email, displayName: googleUser.name, avatarUrl: googleUser.picture });
+  await upsertOAuthAccount(c.env.D1_AUTH, { userId: user.id, provider: 'google', providerAccountId: googleUser.id, accessToken: tokenData.access_token });
 
-  const token = await createSession(c.env, userId);
-  return new Response(null, {
-    status: 302,
-    headers: { Location: POST_LOGIN_REDIRECT, 'Set-Cookie': sessionCookie(token) },
-  });
+  return issueTokensAndRedirect(c, user, sanitizeRedirectTo(parsedState.redirectTo), parsedState.redirectExtension);
 });
 
-// ── Discord ──────────────────────────────────────────────────────────────────
+// ===== DISCORD OAUTH =====
+auth.get('/discord', rateLimit('auth'), async (c) => {
+  const redirectTo = sanitizeRedirectTo(c.req.query('redirect_to'));
+  const redirectExtension = c.req.query('redirect_extension') === 'true';
+  const state = btoa(JSON.stringify({ redirectTo, redirectExtension, nonce: crypto.randomUUID() }));
+  await c.env.KV_SESSIONS.put(`oauth_state:${state}`, '1', { expirationTtl: 300 });
 
-auth.get('/discord', async (c) => {
-  const state = await generateState(c.env.OAUTH_STATE);
-  const params = new URLSearchParams({
-    client_id: c.env.DISCORD_CLIENT_ID,
-    redirect_uri: `${REDIRECT_BASE}/discord/callback`,
-    scope: 'identify email',
-    response_type: 'code',
-    state,
-  });
-  return c.redirect(`https://discord.com/api/oauth2/authorize?${params}`);
+  const url = new URL('https://discord.com/api/oauth2/authorize');
+  url.searchParams.set('client_id', c.env.DISCORD_CLIENT_ID);
+  url.searchParams.set('redirect_uri', 'https://api.wokspec.org/v1/auth/discord/callback');
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', 'identify email');
+  url.searchParams.set('state', state);
+  return c.redirect(url.toString());
 });
 
-auth.get('/discord/callback', async (c) => {
+auth.get('/discord/callback', rateLimit('auth'), async (c) => {
   const { code, state } = c.req.query();
-  if (!code || !state) return c.json({ error: 'Missing code or state' }, 400);
-  if (!(await consumeState(c.env.OAUTH_STATE, state))) return c.json({ error: 'Invalid state' }, 400);
+  if (!code || !state) return c.json({ data: null, error: { code: 'INVALID_CALLBACK', message: 'Missing code or state', status: 400 } }, 400);
+
+  const stateValid = await c.env.KV_SESSIONS.get(`oauth_state:${state}`);
+  if (!stateValid) return c.json({ data: null, error: { code: 'INVALID_STATE', message: 'Invalid OAuth state', status: 400 } }, 400);
+  await c.env.KV_SESSIONS.delete(`oauth_state:${state}`);
+
+  let parsedState: { redirectTo: string; redirectExtension?: boolean };
+  try { parsedState = JSON.parse(atob(state)); } catch { parsedState = { redirectTo: SITE_URL }; }
 
   const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code,
-      client_id: c.env.DISCORD_CLIENT_ID,
-      client_secret: c.env.DISCORD_CLIENT_SECRET,
-      redirect_uri: `${REDIRECT_BASE}/discord/callback`,
-      grant_type: 'authorization_code',
-    }),
+    body: new URLSearchParams({ code, client_id: c.env.DISCORD_CLIENT_ID, client_secret: c.env.DISCORD_CLIENT_SECRET, redirect_uri: 'https://api.wokspec.org/v1/auth/discord/callback', grant_type: 'authorization_code' }),
   });
-  const tokenData = await tokenRes.json<{ access_token?: string; error?: string }>();
-  if (!tokenData.access_token) return c.json({ error: 'Token exchange failed' }, 400);
+  const tokenData = await tokenRes.json<{ access_token?: string }>();
+  if (!tokenData.access_token) return c.json({ data: null, error: { code: 'OAUTH_ERROR', message: 'Token exchange failed', status: 400 } }, 400);
 
   const userRes = await fetch('https://discord.com/api/users/@me', {
     headers: { Authorization: `Bearer ${tokenData.access_token}` },
   });
-  const dUser = await userRes.json<{
-    id: string;
-    username: string;
-    global_name: string | null;
-    email: string | null;
-    avatar: string | null;
-  }>();
+  const discordUser = await userRes.json<{ id: string; email?: string; username: string; global_name?: string; avatar?: string }>();
 
-  const avatarUrl = dUser.avatar
-    ? `https://cdn.discordapp.com/avatars/${dUser.id}/${dUser.avatar}.png`
-    : null;
+  if (!discordUser.email) return c.json({ data: null, error: { code: 'NO_EMAIL', message: 'Discord account has no verified email', status: 400 } }, 400);
+  const avatarUrl = discordUser.avatar ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png` : null;
 
-  const userId = await upsertUser(
-    c.env.DB,
-    'discord',
-    dUser.id,
-    { email: dUser.email, username: dUser.username, displayName: dUser.global_name, avatarUrl },
-    tokenData.access_token,
-  );
+  const user = await upsertUser(c.env.D1_AUTH, { email: discordUser.email, displayName: discordUser.global_name ?? discordUser.username, avatarUrl });
+  await upsertOAuthAccount(c.env.D1_AUTH, { userId: user.id, provider: 'discord', providerAccountId: discordUser.id, accessToken: tokenData.access_token });
 
-  const token = await createSession(c.env, userId);
-  return new Response(null, {
-    status: 302,
-    headers: { Location: POST_LOGIN_REDIRECT, 'Set-Cookie': sessionCookie(token) },
-  });
+  return issueTokensAndRedirect(c, user, sanitizeRedirectTo(parsedState.redirectTo), parsedState.redirectExtension);
 });
 
-// ── Session management ───────────────────────────────────────────────────────
+// ===== REFRESH TOKEN =====
+auth.post('/refresh', rateLimit('auth'), async (c) => {
+  // Accept token from cookie OR request body (extension uses body)
+  let refreshToken = getCookieValue(c.req.header('Cookie'), AUTH_REFRESH_COOKIE_NAME);
+  if (!refreshToken) {
+    try {
+      const body = await c.req.json<{ refreshToken?: string }>();
+      refreshToken = body.refreshToken ?? null;
+    } catch { /* no body */ }
+  }
+  if (!refreshToken) return c.json({ data: null, error: { code: 'NO_REFRESH_TOKEN', message: 'No refresh token', status: 401 } }, 401);
 
-auth.post('/logout', (c) => {
-  return new Response(JSON.stringify({ ok: true }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json', 'Set-Cookie': clearCookie() },
-  });
-});
-
-auth.get('/me', async (c) => {
-  const cookieHeader = c.req.header('cookie') ?? '';
-  const match = cookieHeader.match(/wokspec_session=([^;]+)/);
-  const token = match?.[1];
-  if (!token) return c.json({ ok: false, error: 'Unauthorized' }, 401);
-
-  const payload = await verifyJWT(token, c.env.JWT_SECRET);
-  if (!payload || typeof payload.sub !== 'string') {
-    return c.json({ ok: false, error: 'Invalid session' }, 401);
+  const hash = await hashToken(refreshToken);
+  const session = await findSessionByRefreshHash(c.env.D1_AUTH, hash);
+  if (!session || new Date(session.expiresAt) < new Date()) {
+    return c.json({ data: null, error: { code: 'INVALID_REFRESH_TOKEN', message: 'Invalid or expired refresh token', status: 401 } }, 401);
   }
 
-  const user = await c.env.DB
-    .prepare('SELECT id, email, username, display_name, avatar_url FROM users WHERE id = ?')
-    .bind(payload.sub)
-    .first<AuthUser>();
+  const user = await findUserById(c.env.D1_AUTH, session.userId);
+  if (!user) return c.json({ data: null, error: { code: 'USER_NOT_FOUND', message: 'User not found', status: 401 } }, 401);
 
-  if (!user) return c.json({ ok: false, error: 'User not found' }, 401);
-  return c.json({ ok: true, user });
+  // Rotate refresh token
+  await deleteSession(c.env.D1_AUTH, session.id);
+  // Opportunistically prune stale sessions (fire-and-forget)
+  pruneExpiredSessions(c.env.D1_AUTH).catch(() => {});
+  return issueTokensAndRedirect(c, user, null);
 });
+
+// ===== LOGOUT =====
+auth.post('/logout', async (c) => {
+  // Accept refresh token from cookie (web) or request body (extension)
+  let refreshToken = getCookieValue(c.req.header('Cookie'), AUTH_REFRESH_COOKIE_NAME);
+  if (!refreshToken) {
+    try {
+      const body = await c.req.json<{ refreshToken?: string }>();
+      refreshToken = body.refreshToken ?? null;
+    } catch { /* no body */ }
+  }
+  if (refreshToken) {
+    const hash = await hashToken(refreshToken);
+    await deleteSessionByRefreshHash(c.env.D1_AUTH, hash).catch(() => {});
+  }
+  // Clear cookies
+  c.header('Set-Cookie', `${AUTH_COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
+  c.res.headers.append('Set-Cookie', `${AUTH_REFRESH_COOKIE_NAME}=; Max-Age=0; Path=/v1/auth; HttpOnly; Secure; SameSite=Lax`);
+  return c.json({ data: { ok: true }, error: null });
+});
+
+// ===== HELPERS =====
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function issueTokensAndRedirect(c: any, user: any, redirectTo: string | null, redirectExtension = false): Promise<Response> {
+  const accessToken = await signAccessToken(user, c.env.JWT_SECRET);
+  const refreshToken = generateRefreshToken();
+  const refreshHash = await hashToken(refreshToken);
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL * 1000);
+  await createSession(c.env.D1_AUTH, user.id, refreshHash, expiresAt, {
+    userAgent: c.req.header('user-agent') ?? undefined,
+    ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? undefined,
+  });
+
+  const isProd = c.env.ENVIRONMENT === 'production';
+
+  // Extension flow: redirect to site callback page with tokens in URL params.
+  // The wokspec.org/auth/callback page should be a minimal page that posts a
+  // message to the extension and then closes itself. Tokens travel over HTTPS
+  // Extension/cross-origin flow: redirect with tokens in URL params.
+  if (redirectExtension) {
+    // If redirect_to points to a non-main-site origin (e.g. eral.wokspec.org), use it directly.
+    const callbackBase = redirectTo && !redirectTo.startsWith(SITE_URL)
+      ? redirectTo
+      : `${SITE_URL}/auth/callback`;
+    const callbackUrl = new URL(callbackBase);
+    callbackUrl.searchParams.set('accessToken', accessToken);
+    callbackUrl.searchParams.set('refreshToken', refreshToken);
+    return c.redirect(callbackUrl.toString());
+  }
+
+  const cookieOpts = `HttpOnly; ${isProd ? 'Secure; ' : ''}SameSite=Lax; Path=/`;
+
+  if (redirectTo) {
+    c.header('Set-Cookie', `${AUTH_COOKIE_NAME}=${accessToken}; Max-Age=${ACCESS_TOKEN_TTL}; ${cookieOpts}`);
+    c.res.headers.append('Set-Cookie', `${AUTH_REFRESH_COOKIE_NAME}=${refreshToken}; Max-Age=${REFRESH_TOKEN_TTL}; Path=/v1/auth; HttpOnly; ${isProd ? 'Secure; ' : ''}SameSite=Lax`);
+    return c.redirect(redirectTo);
+  }
+
+  // JSON response (used by /refresh)
+  c.header('Set-Cookie', `${AUTH_COOKIE_NAME}=${accessToken}; Max-Age=${ACCESS_TOKEN_TTL}; ${cookieOpts}`);
+  c.res.headers.append('Set-Cookie', `${AUTH_REFRESH_COOKIE_NAME}=${refreshToken}; Max-Age=${REFRESH_TOKEN_TTL}; Path=/v1/auth; HttpOnly; ${isProd ? 'Secure; ' : ''}SameSite=Lax`);
+  return c.json({ data: { user, accessToken, refreshToken }, error: null });
+}
+
+function getCookieValue(cookieHeader: string | undefined, name: string): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 export { auth as authRouter };
