@@ -1,0 +1,23 @@
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+path_instructions:
+  - path: "src/routes/auth.ts"
+    instructions: "CRITICAL: This is the auth backbone for all WokSpec apps. Any change to the /v1/me response shape will break every product. Verify JWT signing/verification uses consistent algorithm. OAuth redirect validation must remain strict. Never expose private key material."
+  - path: "src/lib/jwt.ts"
+    instructions: "JWT must use asymmetric keys (RS256 or HS256 with strong secret). Check expiry values are reasonable. Verify claims are properly typed."
+  - path: "src/middleware.ts"
+    instructions: "CORS origins must be an explicit allowlist. Never allow wildcard * in production CORS. Auth middleware must reject missing/malformed tokens before routing."
+  - path: "src/db/schema.sql"
+    instructions: "Schema changes are irreversible in production. Verify indexes on frequently queried columns. Ensure cascades are intentional."
+  - path: ".github/workflows/**"
+    instructions: "Secrets must come from GitHub secrets, not environment files. Deployment must only run on main branch pushes."
+chat:
+  auto_reply: true

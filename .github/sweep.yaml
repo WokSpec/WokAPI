@@ -1,0 +1,17 @@
+version: 1
+gha_enabled: true
+description: "WokAPI is the auth backbone for all WokSpec products. Hono + Cloudflare Workers. Handles OAuth (GitHub/Google/Discord), JWT issuance, product registry. Deployed to api.wokspec.org."
+rules:
+  - "NEVER modify the /v1/me response shape — all WokSpec apps depend on it"
+  - "CORS origins must be an explicit allowlist — never use wildcard *"
+  - "OAuth state parameters must be validated to prevent CSRF"
+  - "JWT claims must include iat, exp, and sub at minimum"
+  - "All new routes must verify the auth middleware"
+  - "Stripe webhooks must verify HMAC-SHA256 signature before processing"
+  - "Secrets and API keys come from Cloudflare Workers secrets — never hardcode"
+blocked_dirs:
+  - node_modules
+  - .wrangler
+sandbox:
+  install: npm ci
+  check: npx tsc --noEmit
