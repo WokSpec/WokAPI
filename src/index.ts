@@ -59,7 +59,7 @@ const PRODUCTS: WokProduct[] = [
     name: 'Eral',
     description: 'AI layer that integrates across all WokSpec products and external sites.',
     url: 'https://eral.wokspec.org',
-    health_url: 'https://eral.wokspec.org/api/health',
+    health_url: 'https://eral.wokspec.org/api/v1/status',
     status: 'live',
     tags: ['ai', 'assistant', 'integration'],
   },
