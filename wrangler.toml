@@ -12,9 +12,9 @@ custom_domain = true
 
 [[kv_namespaces]]
 binding = "OAUTH_STATE"
-id = "PLACEHOLDER_KV_ID"
+id = "487bab854f714db8a46e50f80f51d766"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "wokspec-auth"
-database_id = "PLACEHOLDER_D1_ID"
+database_id = "91a906ce-52b6-46db-896b-246195af781f"
