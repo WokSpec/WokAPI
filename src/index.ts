@@ -19,6 +19,15 @@ interface WokProduct {
 
 const PRODUCTS: WokProduct[] = [
   {
+    slug: 'wokweb',
+    name: 'WokWeb',
+    description: 'Main WokSpec web platform and landing site.',
+    url: 'https://wokspec.org',
+    health_url: 'https://wokspec.org',
+    status: 'live',
+    tags: ['web', 'platform'],
+  },
+  {
     slug: 'wokgen',
     name: 'WokGen',
     description: 'AI-powered asset generator for brands and creators.',
@@ -50,9 +59,36 @@ const PRODUCTS: WokProduct[] = [
     name: 'Eral',
     description: 'AI layer that integrates across all WokSpec products and external sites.',
     url: 'https://eral.wokspec.org',
-    health_url: 'https://eral.wokspec.org/api/v1/status',
+    health_url: 'https://eral.wokspec.org/api/health',
     status: 'live',
     tags: ['ai', 'assistant', 'integration'],
+  },
+  {
+    slug: 'vecto',
+    name: 'Vecto',
+    description: 'Vector design and creative tooling.',
+    url: 'https://vecto.wokspec.org',
+    health_url: 'https://vecto.wokspec.org/api/health',
+    status: 'live',
+    tags: ['design', 'vector'],
+  },
+  {
+    slug: 'dilu',
+    name: 'Dilu',
+    description: 'Creative web experience for the Dilu product surface.',
+    url: 'https://dilu.wokspec.org',
+    health_url: 'https://dilu.wokspec.org',
+    status: 'live',
+    tags: ['web', 'creative'],
+  },
+  {
+    slug: 'woktool',
+    name: 'WokTool',
+    description: 'Utility and console tooling for the WokSpec stack.',
+    url: 'https://tools.wokspec.org',
+    health_url: 'https://tools.wokspec.org',
+    status: 'live',
+    tags: ['tools', 'console'],
   },
 ];
 
@@ -61,31 +97,31 @@ const PRODUCTS: WokProduct[] = [
 interface HealthCheck {
   slug: string;
   status: 'ok' | 'degraded' | 'down' | 'unknown';
-  latency_ms: number | null;
-  checked_at: string;
+  latencyMs: number | null;
+  checkedAt: string;
   detail?: string;
 }
 
 // ── Probe helper ─────────────────────────────────────────────────────────────
 
 async function probe(product: WokProduct): Promise<HealthCheck> {
-  const checked_at = new Date().toISOString();
+  const checkedAt = new Date().toISOString();
   const start = Date.now();
   try {
     const res = await fetch(product.health_url, {
       signal: AbortSignal.timeout(5000),
       headers: { 'User-Agent': 'WokAPI-HealthCheck/1.0' },
     });
-    const latency_ms = Date.now() - start;
-    if (res.ok) return { slug: product.slug, status: 'ok', latency_ms, checked_at };
+    const latencyMs = Date.now() - start;
+    if (res.ok) return { slug: product.slug, status: 'ok', latencyMs, checkedAt };
     if (res.status >= 500) {
-      return { slug: product.slug, status: 'down', latency_ms, checked_at, detail: `HTTP ${res.status}` };
+      return { slug: product.slug, status: 'down', latencyMs, checkedAt, detail: `HTTP ${res.status}` };
     }
-    return { slug: product.slug, status: 'degraded', latency_ms, checked_at, detail: `HTTP ${res.status}` };
+    return { slug: product.slug, status: 'degraded', latencyMs, checkedAt, detail: `HTTP ${res.status}` };
   } catch (err) {
-    const latency_ms = Date.now() - start;
+    const latencyMs = Date.now() - start;
     const detail = err instanceof Error ? err.message.slice(0, 120) : 'Unreachable';
-    return { slug: product.slug, status: 'down', latency_ms, checked_at, detail };
+    return { slug: product.slug, status: 'down', latencyMs, checkedAt, detail };
   }
 }
 
@@ -232,18 +268,7 @@ app.get('/v1/projects/:slug', (c) => {
 // GET /v1/status — aggregate health across all products
 app.get('/v1/status', async (c) => {
   const checks = await Promise.all(PRODUCTS.map(probe));
-  const anyDown = checks.some((ch) => ch.status === 'down');
-  const anyDegraded = checks.some((ch) => ch.status === 'degraded');
-  const overallStatus: 'ok' | 'degraded' | 'down' = anyDown
-    ? 'down'
-    : anyDegraded
-    ? 'degraded'
-    : 'ok';
-
-  return c.json(
-    { ok: !anyDown, status: overallStatus, ts: new Date().toISOString(), checks },
-    anyDown ? 503 : 200,
-  );
+  return c.json({ data: checks, error: null });
 });
 
 // GET /v1/status/:slug — single product status
@@ -252,7 +277,7 @@ app.get('/v1/status/:slug', async (c) => {
   if (!product) return c.json({ ok: false, error: 'Not found' }, 404);
   const check = await probe(product);
   return c.json(
-    { ok: check.status === 'ok', ...check },
+    { data: check, error: null },
     check.status === 'down' ? 503 : 200,
   );
 });

@@ -1,6 +1,4 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
 import type { Env, AuthUser } from '../types';
 import { requireAuth, rateLimit } from '../middleware';
 import { CONSULTATION_PRICE_CENTS } from '../lib/constants';
@@ -18,18 +16,20 @@ bookings.post('/checkout', rateLimit('booking'), requireAuth(), async (c) => {
       'Authorization': `Bearer ${c.env.STRIPE_SECRET_KEY}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({
-      'mode': 'payment',
-      'customer_email': user.email,
-      'line_items[0][price_data][currency]': 'usd',
-      'line_items[0][price_data][product_data][name]': 'WokSpec Consultation Slot',
-      'line_items[0][price_data][product_data][description]': 'A 30-minute consultation to see if we can help you.',
-      'line_items[0][price_data][unit_amount]': String(CONSULTATION_PRICE_CENTS),
-      'line_items[0][quantity]': '1',
-      'metadata[user_id]': user.id,
-      'success_url': 'https://wokspec.org/consult/success?session_id={CHECKOUT_SESSION_ID}',
-      'cancel_url': 'https://wokspec.org/consult',
-    }),
+    body: new URLSearchParams(
+      Object.entries({
+        'mode': 'payment',
+        'customer_email': user.email ?? '',
+        'line_items[0][price_data][currency]': 'usd',
+        'line_items[0][price_data][product_data][name]': 'WokSpec Consultation Slot',
+        'line_items[0][price_data][product_data][description]': 'A 30-minute consultation to see if we can help you.',
+        'line_items[0][price_data][unit_amount]': String(CONSULTATION_PRICE_CENTS),
+        'line_items[0][quantity]': '1',
+        'metadata[user_id]': user.id,
+        'success_url': 'https://wokspec.org/consult/success?session_id={CHECKOUT_SESSION_ID}',
+        'cancel_url': 'https://wokspec.org/consult',
+      }),
+    ),
   });
 
   const session = await stripeRes.json<{ id?: string; url?: string; error?: { message: string } }>();

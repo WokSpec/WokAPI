@@ -21,6 +21,13 @@ async function importKey(secret: string): Promise<CryptoKey> {
   );
 }
 
+async function sha256(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest))
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 export async function signJWT(payload: Record<string, unknown>, secret: string): Promise<string> {
   const header = b64url(new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
   const body = b64url(new TextEncoder().encode(JSON.stringify(payload)));
@@ -51,4 +58,37 @@ export async function verifyJWT(
   } catch {
     return null;
   }
+}
+
+export async function signAccessToken(
+  user: { id: string; email?: string | null; username?: string | null; display_name?: string | null },
+  secret: string,
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return signJWT(
+    {
+      sub: user.id,
+      email: user.email ?? null,
+      username: user.username ?? null,
+      display_name: user.display_name ?? null,
+      iat: now,
+      exp: now + 60 * 15,
+    },
+    secret,
+  );
+}
+
+export function generateRefreshToken(): string {
+  return crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+}
+
+export async function hashToken(token: string): Promise<string> {
+  return sha256(token);
+}
+
+export async function verifyToken(
+  token: string,
+  secret: string,
+): Promise<Record<string, unknown> | null> {
+  return verifyJWT(token, secret);
 }

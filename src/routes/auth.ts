@@ -1,8 +1,6 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
 import type { Env } from '../types';
-import { signAccessToken, verifyToken, generateRefreshToken, hashToken } from '../lib/jwt';
+import { signAccessToken, generateRefreshToken, hashToken, verifyJWT } from '../lib/jwt';
 import {
   upsertUser, upsertOAuthAccount,
   createSession, findSessionByRefreshHash, deleteSessionByRefreshHash,
@@ -39,7 +37,7 @@ auth.get('/github', rateLimit('auth'), async (c) => {
   const redirectTo = sanitizeRedirectTo(c.req.query('redirect_to'));
   const redirectExtension = c.req.query('redirect_extension') === 'true';
   const state = btoa(JSON.stringify({ redirectTo, redirectExtension, nonce: crypto.randomUUID() }));
-  await c.env.KV_SESSIONS.put(`oauth_state:${state}`, '1', { expirationTtl: 300 });
+  await c.env.OAUTH_STATE.put(`oauth_state:${state}`, '1', { expirationTtl: 300 });
 
   const url = new URL('https://github.com/login/oauth/authorize');
   url.searchParams.set('client_id', c.env.GITHUB_CLIENT_ID);
@@ -53,9 +51,9 @@ auth.get('/github/callback', rateLimit('auth'), async (c) => {
   const { code, state } = c.req.query();
   if (!code || !state) return c.json({ data: null, error: { code: 'INVALID_CALLBACK', message: 'Missing code or state', status: 400 } }, 400);
 
-  const stateValid = await c.env.KV_SESSIONS.get(`oauth_state:${state}`);
+  const stateValid = await c.env.OAUTH_STATE.get(`oauth_state:${state}`);
   if (!stateValid) return c.json({ data: null, error: { code: 'INVALID_STATE', message: 'Invalid OAuth state', status: 400 } }, 400);
-  await c.env.KV_SESSIONS.delete(`oauth_state:${state}`);
+  await c.env.OAUTH_STATE.delete(`oauth_state:${state}`);
 
   let parsedState: { redirectTo: string; redirectExtension?: boolean };
   try { parsedState = JSON.parse(atob(state)); } catch { parsedState = { redirectTo: SITE_URL }; }
@@ -86,8 +84,8 @@ auth.get('/github/callback', rateLimit('auth'), async (c) => {
   }
   if (!email) return c.json({ data: null, error: { code: 'NO_EMAIL', message: 'No verified email found', status: 400 } }, 400);
 
-  const user = await upsertUser(c.env.D1_AUTH, { email, displayName: githubUser.name ?? githubUser.login, avatarUrl: githubUser.avatar_url });
-  await upsertOAuthAccount(c.env.D1_AUTH, { userId: user.id, provider: 'github', providerAccountId: String(githubUser.id), accessToken: tokenData.access_token });
+  const user = await upsertUser(c.env.DB, { email, displayName: githubUser.name ?? githubUser.login, avatarUrl: githubUser.avatar_url });
+  await upsertOAuthAccount(c.env.DB, { userId: user.id, provider: 'github', providerAccountId: String(githubUser.id), accessToken: tokenData.access_token });
 
   return issueTokensAndRedirect(c, user, sanitizeRedirectTo(parsedState.redirectTo), parsedState.redirectExtension);
 });
@@ -97,7 +95,7 @@ auth.get('/google', rateLimit('auth'), async (c) => {
   const redirectTo = sanitizeRedirectTo(c.req.query('redirect_to'));
   const redirectExtension = c.req.query('redirect_extension') === 'true';
   const state = btoa(JSON.stringify({ redirectTo, redirectExtension, nonce: crypto.randomUUID() }));
-  await c.env.KV_SESSIONS.put(`oauth_state:${state}`, '1', { expirationTtl: 300 });
+  await c.env.OAUTH_STATE.put(`oauth_state:${state}`, '1', { expirationTtl: 300 });
 
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', c.env.GOOGLE_CLIENT_ID);
@@ -113,9 +111,9 @@ auth.get('/google/callback', rateLimit('auth'), async (c) => {
   const { code, state } = c.req.query();
   if (!code || !state) return c.json({ data: null, error: { code: 'INVALID_CALLBACK', message: 'Missing code or state', status: 400 } }, 400);
 
-  const stateValid = await c.env.KV_SESSIONS.get(`oauth_state:${state}`);
+  const stateValid = await c.env.OAUTH_STATE.get(`oauth_state:${state}`);
   if (!stateValid) return c.json({ data: null, error: { code: 'INVALID_STATE', message: 'Invalid OAuth state', status: 400 } }, 400);
-  await c.env.KV_SESSIONS.delete(`oauth_state:${state}`);
+  await c.env.OAUTH_STATE.delete(`oauth_state:${state}`);
 
   let parsedState: { redirectTo: string; redirectExtension?: boolean };
   try { parsedState = JSON.parse(atob(state)); } catch { parsedState = { redirectTo: SITE_URL }; }
@@ -133,8 +131,8 @@ auth.get('/google/callback', rateLimit('auth'), async (c) => {
   });
   const googleUser = await userRes.json<{ id: string; email: string; name: string; picture: string }>();
 
-  const user = await upsertUser(c.env.D1_AUTH, { email: googleUser.email, displayName: googleUser.name, avatarUrl: googleUser.picture });
-  await upsertOAuthAccount(c.env.D1_AUTH, { userId: user.id, provider: 'google', providerAccountId: googleUser.id, accessToken: tokenData.access_token });
+  const user = await upsertUser(c.env.DB, { email: googleUser.email, displayName: googleUser.name, avatarUrl: googleUser.picture });
+  await upsertOAuthAccount(c.env.DB, { userId: user.id, provider: 'google', providerAccountId: googleUser.id, accessToken: tokenData.access_token });
 
   return issueTokensAndRedirect(c, user, sanitizeRedirectTo(parsedState.redirectTo), parsedState.redirectExtension);
 });
@@ -144,7 +142,7 @@ auth.get('/discord', rateLimit('auth'), async (c) => {
   const redirectTo = sanitizeRedirectTo(c.req.query('redirect_to'));
   const redirectExtension = c.req.query('redirect_extension') === 'true';
   const state = btoa(JSON.stringify({ redirectTo, redirectExtension, nonce: crypto.randomUUID() }));
-  await c.env.KV_SESSIONS.put(`oauth_state:${state}`, '1', { expirationTtl: 300 });
+  await c.env.OAUTH_STATE.put(`oauth_state:${state}`, '1', { expirationTtl: 300 });
 
   const url = new URL('https://discord.com/api/oauth2/authorize');
   url.searchParams.set('client_id', c.env.DISCORD_CLIENT_ID);
@@ -159,9 +157,9 @@ auth.get('/discord/callback', rateLimit('auth'), async (c) => {
   const { code, state } = c.req.query();
   if (!code || !state) return c.json({ data: null, error: { code: 'INVALID_CALLBACK', message: 'Missing code or state', status: 400 } }, 400);
 
-  const stateValid = await c.env.KV_SESSIONS.get(`oauth_state:${state}`);
+  const stateValid = await c.env.OAUTH_STATE.get(`oauth_state:${state}`);
   if (!stateValid) return c.json({ data: null, error: { code: 'INVALID_STATE', message: 'Invalid OAuth state', status: 400 } }, 400);
-  await c.env.KV_SESSIONS.delete(`oauth_state:${state}`);
+  await c.env.OAUTH_STATE.delete(`oauth_state:${state}`);
 
   let parsedState: { redirectTo: string; redirectExtension?: boolean };
   try { parsedState = JSON.parse(atob(state)); } catch { parsedState = { redirectTo: SITE_URL }; }
@@ -182,10 +180,29 @@ auth.get('/discord/callback', rateLimit('auth'), async (c) => {
   if (!discordUser.email) return c.json({ data: null, error: { code: 'NO_EMAIL', message: 'Discord account has no verified email', status: 400 } }, 400);
   const avatarUrl = discordUser.avatar ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png` : null;
 
-  const user = await upsertUser(c.env.D1_AUTH, { email: discordUser.email, displayName: discordUser.global_name ?? discordUser.username, avatarUrl });
-  await upsertOAuthAccount(c.env.D1_AUTH, { userId: user.id, provider: 'discord', providerAccountId: discordUser.id, accessToken: tokenData.access_token });
+  const user = await upsertUser(c.env.DB, { email: discordUser.email, displayName: discordUser.global_name ?? discordUser.username, avatarUrl });
+  await upsertOAuthAccount(c.env.DB, { userId: user.id, provider: 'discord', providerAccountId: discordUser.id, accessToken: tokenData.access_token });
 
   return issueTokensAndRedirect(c, user, sanitizeRedirectTo(parsedState.redirectTo), parsedState.redirectExtension);
+});
+
+auth.get('/me', rateLimit('auth'), async (c) => {
+  const token = getCookieValue(c.req.header('Cookie'), AUTH_COOKIE_NAME);
+  if (!token) {
+    return c.json({ data: null, error: { code: 'UNAUTHORIZED', message: 'Not authenticated', status: 401 } }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env.JWT_SECRET);
+  if (!payload || typeof payload.sub !== 'string') {
+    return c.json({ data: null, error: { code: 'UNAUTHORIZED', message: 'Invalid session', status: 401 } }, 401);
+  }
+
+  const user = await findUserById(c.env.DB, payload.sub);
+  if (!user) {
+    return c.json({ data: null, error: { code: 'UNAUTHORIZED', message: 'User not found', status: 401 } }, 401);
+  }
+
+  return c.json({ data: { user }, error: null });
 });
 
 // ===== REFRESH TOKEN =====
@@ -201,18 +218,18 @@ auth.post('/refresh', rateLimit('auth'), async (c) => {
   if (!refreshToken) return c.json({ data: null, error: { code: 'NO_REFRESH_TOKEN', message: 'No refresh token', status: 401 } }, 401);
 
   const hash = await hashToken(refreshToken);
-  const session = await findSessionByRefreshHash(c.env.D1_AUTH, hash);
+  const session = await findSessionByRefreshHash(c.env.DB, hash);
   if (!session || new Date(session.expiresAt) < new Date()) {
     return c.json({ data: null, error: { code: 'INVALID_REFRESH_TOKEN', message: 'Invalid or expired refresh token', status: 401 } }, 401);
   }
 
-  const user = await findUserById(c.env.D1_AUTH, session.userId);
+  const user = await findUserById(c.env.DB, session.userId);
   if (!user) return c.json({ data: null, error: { code: 'USER_NOT_FOUND', message: 'User not found', status: 401 } }, 401);
 
   // Rotate refresh token
-  await deleteSession(c.env.D1_AUTH, session.id);
+  await deleteSession(c.env.DB, session.id);
   // Opportunistically prune stale sessions (fire-and-forget)
-  pruneExpiredSessions(c.env.D1_AUTH).catch(() => {});
+  pruneExpiredSessions(c.env.DB).catch(() => {});
   return issueTokensAndRedirect(c, user, null);
 });
 
@@ -228,7 +245,7 @@ auth.post('/logout', async (c) => {
   }
   if (refreshToken) {
     const hash = await hashToken(refreshToken);
-    await deleteSessionByRefreshHash(c.env.D1_AUTH, hash).catch(() => {});
+    await deleteSessionByRefreshHash(c.env.DB, hash).catch(() => {});
   }
   // Clear cookies
   c.header('Set-Cookie', `${AUTH_COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
@@ -243,7 +260,7 @@ async function issueTokensAndRedirect(c: any, user: any, redirectTo: string | nu
   const refreshToken = generateRefreshToken();
   const refreshHash = await hashToken(refreshToken);
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL * 1000);
-  await createSession(c.env.D1_AUTH, user.id, refreshHash, expiresAt, {
+  await createSession(c.env.DB, user.id, refreshHash, expiresAt, {
     userAgent: c.req.header('user-agent') ?? undefined,
     ipAddress: c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? undefined,
   });

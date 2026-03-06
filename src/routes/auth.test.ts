@@ -19,8 +19,8 @@ describe('GET /v1/auth/me', () => {
     const app = makeApp();
     const res = await app.request('/v1/auth/me');
     expect(res.status).toBe(401);
-    const body = await res.json<{ ok: boolean; error: string }>();
-    expect(body.ok).toBe(false);
+    const body = await res.json<{ data: null; error: { code: string } }>();
+    expect(body.error.code).toBe('UNAUTHORIZED');
   });
 
   it('returns 401 when session cookie is invalid', async () => {

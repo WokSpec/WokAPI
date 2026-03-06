@@ -7,11 +7,14 @@ export interface Env {
   DISCORD_CLIENT_ID: string;
   DISCORD_CLIENT_SECRET: string;
   JWT_SECRET: string;
+  ENVIRONMENT?: string;
   // D1 databases
   DB: D1Database;
   D1_MAIN: D1Database;
+  D1_AUTH?: D1Database;
   // KV
   OAUTH_STATE: KVNamespace;
+  KV_SESSIONS?: KVNamespace;
   // Stripe / email (used by bookings)
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
