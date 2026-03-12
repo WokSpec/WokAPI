@@ -4,6 +4,8 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { authRouter } from './routes/auth';
+import { aiRouter } from './routes/ai';
+import { billingRouter } from './routes/billing';
 
 // ── Product registry ─────────────────────────────────────────────────────────
 
@@ -140,6 +142,9 @@ app.use(
 );
 
 app.route('/v1/auth', authRouter);
+app.route('/v1/ai', aiRouter);
+app.route('/v1/billing', billingRouter);
+app.route('/v1/bookings', billingRouter);
 
 // GET / — service info (HTML for browsers, JSON for API clients)
 app.get('/', (c) => {
@@ -210,7 +215,7 @@ app.get('/', (c) => {
   <div class="card">
     <span class="badge">v1 · live</span>
     <h1>WokAPI</h1>
-    <p class="sub">Platform API for WokSpec — product registry and real-time status for all Wok products.</p>
+    <p class="sub">Platform API for WokSpec — product registry, AI services, and real-time status.</p>
     <div class="endpoints">
       <a class="ep" href="/health">
         <span class="method">GET</span>
@@ -227,6 +232,11 @@ app.get('/', (c) => {
         <span class="path">/v1/status</span>
         <span class="desc">Aggregate health</span>
       </a>
+      <a class="ep" href="/v1/ai/chat">
+        <span class="method">POST</span>
+        <span class="path">/v1/ai/chat</span>
+        <span class="desc">AI Proxy</span>
+      </a>
     </div>
     <p class="footer">
       <a href="https://wokspec.org">wokspec.org</a>
@@ -241,7 +251,7 @@ app.get('/', (c) => {
   return c.json({
     name: 'WokAPI',
     version: '1',
-    description: 'WokSpec platform API — product registry and status.',
+    description: 'WokSpec platform API — product registry, AI services, and status.',
     docs: 'https://wokspec.org/docs',
     status: 'https://api.wokspec.org/v1/status',
     projects: 'https://api.wokspec.org/v1/projects',
@@ -268,7 +278,10 @@ app.get('/v1/projects/:slug', (c) => {
 // GET /v1/status — aggregate health across all products
 app.get('/v1/status', async (c) => {
   const checks = await Promise.all(PRODUCTS.map(probe));
-  return c.json({ data: checks, error: null });
+  const isDown = checks.some((chk) => chk.status === 'down');
+  const isDegraded = checks.some((chk) => chk.status === 'degraded');
+  const overall = isDown ? 'down' : isDegraded ? 'degraded' : 'ok';
+  return c.json({ data: { overall, checks }, error: null });
 });
 
 // GET /v1/status/:slug — single product status
