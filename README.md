@@ -9,6 +9,16 @@ Core API for WokSpec. Handles auth, sessions, payments, and AI routing across al
 
 ---
 
+![Status](https://img.shields.io/badge/status-active-green) ![Scope](https://img.shields.io/badge/scope-private-blue)
+
+## Related
+- WokSpec.org (site/dashboard)
+- WokStudio (design/build suite)
+- WokHei (news)
+- Nqita (sibling org) — https://github.com/nqita/nqita
+- Autiladus (sibling org) — https://github.com/autiladus/autiladus
+
+
 ## Stack
 
 - **Runtime:** Cloudflare Workers
