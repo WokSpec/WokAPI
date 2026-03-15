@@ -108,13 +108,13 @@ Revoke a specific session by ID.
 
 ---
 
-## AI (Proxy → Eral)
+## AI (Proxy → Nikita)
 
-These routes proxy to Eral and forward the caller's JWT. Subscription tier determines model access and rate limits.
+These routes proxy to Nikita and forward the caller's JWT. Subscription tier determines model access and rate limits.
 
 ### `POST /v1/ai/chat`
 
-**Request body:** forwarded directly to Eral `/v1/chat`  
+**Request body:** forwarded directly to Nikita `/v1/chat`  
 ```json
 {
   "message": "string",
@@ -123,13 +123,13 @@ These routes proxy to Eral and forward the caller's JWT. Subscription tier deter
 }
 ```
 
-**Response:** streaming JSON or `200` with Eral's response body.
+**Response:** streaming JSON or `200` with Nikita's response body.
 
 ---
 
 ### `POST /v1/ai/generate`
 
-**Request body:** forwarded to Eral `/v1/generate`
+**Request body:** forwarded to Nikita `/v1/generate`
 ```json
 {
   "prompt": "string",
@@ -142,7 +142,7 @@ These routes proxy to Eral and forward the caller's JWT. Subscription tier deter
 
 ### `POST /v1/ai/analyze`
 
-**Request body:** forwarded to Eral `/v1/analyze`
+**Request body:** forwarded to Nikita `/v1/analyze`
 ```json
 {
   "content": "string",

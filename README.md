@@ -13,7 +13,7 @@ Core API for WokSpec. Handles auth, sessions, payments, and AI routing across al
 - **Database:** Cloudflare D1 (SQLite at the edge)
 - **Cache / Sessions:** Cloudflare KV
 - **Payments:** Stripe
-- **AI routing:** Eral (proxied via `/v1/ai/*`)
+- **AI routing:** Nikita (proxied via `/v1/ai/*`)
 
 ---
 
@@ -34,7 +34,7 @@ Core API for WokSpec. Handles auth, sessions, payments, and AI routing across al
 | `GET`  | `/v1/sessions` | List active sessions |
 | `DELETE` | `/v1/sessions/:id` | Revoke session |
 
-### AI (proxy to Eral)
+### AI (proxy to Nikita)
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/v1/ai/chat` | Conversational AI |
@@ -84,4 +84,4 @@ id      = "<your-kv-id>"
 
 ## Auth model
 
-All protected routes require `Authorization: Bearer <jwt>`. JWTs are signed with `JWT_SECRET` (shared with Eral). Tokens expire in 7 days; refresh tokens extend to 30 days.
+All protected routes require `Authorization: Bearer <jwt>`. JWTs are signed with `JWT_SECRET` (shared with Nikita). Tokens expire in 7 days; refresh tokens extend to 30 days.

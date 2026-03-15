@@ -18,10 +18,8 @@ const ALLOWED_REDIRECT_ORIGINS = [
   'https://studio.wokspec.org',
   'https://hei.wokspec.org',
   'https://chopsticks.wokspec.org',
-  'https://eral.wokspec.org',
-  'https://studio.wokspec.org',
+  'https://nikita.wokspec.org',
   'https://dilu.wokspec.org',
-  'https://studio.wokspec.org',
 ];
 
 function sanitizeRedirectTo(redirectTo: string | null | undefined): string {
@@ -279,7 +277,7 @@ async function issueTokensAndRedirect(c: any, user: any, redirectTo: string | nu
   // message to the extension and then closes itself. Tokens travel over HTTPS
   // Extension/cross-origin flow: redirect with tokens in URL params.
   if (redirectExtension) {
-    // If redirect_to points to a non-main-site origin (e.g. eral.wokspec.org), use it directly.
+    // If redirect_to points to a non-main-site origin (e.g. nikita.wokspec.org), use it directly.
     const callbackBase = redirectTo && !redirectTo.startsWith(SITE_URL)
       ? redirectTo
       : `${SITE_URL}/auth/callback`;

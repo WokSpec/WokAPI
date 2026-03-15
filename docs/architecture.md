@@ -22,7 +22,7 @@ The Worker runs globally at Cloudflare edge PoPs, meaning it processes requests 
        ┌──────────┼──────────────┐
        │          │              │
   ┌────▼───┐  ┌───▼──┐  ┌───────▼───────┐
-  │  D1 DB │  │  KV  │  │  Eral Worker  │
+  │  D1 DB │  │  KV  │  │  Nikita Worker  │
   │(SQLite)│  │(sess)│  │  (AI proxy)   │
   └────────┘  └──────┘  └───────────────┘
                   │
@@ -96,16 +96,16 @@ Authorization: Bearer <jwt>
   → if invalid: 401 Unauthorized
 ```
 
-The same `JWT_SECRET` is deployed to the Eral Worker so Eral can independently verify tokens without a round-trip to WokAPI.
+The same `JWT_SECRET` is deployed to the Nikita Worker so Nikita can independently verify tokens without a round-trip to WokAPI.
 
 ---
 
 ## AI Proxy
 
-WokAPI proxies AI calls to Eral under `/v1/ai/*`. The proxy:
+WokAPI proxies AI calls to Nikita under `/v1/ai/*`. The proxy:
 1. Verifies the caller's JWT
 2. Checks subscription tier for rate/model limits
-3. Forwards to `https://eral.wokspec.org/v1/{endpoint}` with the JWT passed as-is
+3. Forwards to `https://nikita.wokspec.org/v1/{endpoint}` with the JWT passed as-is
 4. Streams the response back (where applicable)
 
 This means products only need to know one base URL (`api.wokspec.org`) and receive consistent AI behaviour gated by subscription.
@@ -152,4 +152,4 @@ WokAPI is latency-critical (auth sits in every request path). D1 runs inside Clo
 Hono is built for edge runtimes and has no Node.js dependencies. It compiles to a small bundle and starts instantly. The router and middleware surface is similar to Express, making it familiar.
 
 **Why HS256 and not RS256?**  
-A shared secret is simpler to manage when the verifying parties (WokAPI and Eral) are both internal services owned by WokSpec. RS256 would require distributing a public key and adds unnecessary complexity for this trust model.
+A shared secret is simpler to manage when the verifying parties (WokAPI and Nikita) are both internal services owned by WokSpec. RS256 would require distributing a public key and adds unnecessary complexity for this trust model.

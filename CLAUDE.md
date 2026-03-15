@@ -37,7 +37,11 @@
 
 1. **OAuth authentication** — handles the full OAuth2 flows for GitHub, Google, and Discord. Issues WokSpec-branded JWTs after successful authentication.
 2. **JWT issuance and refresh** — mints short-lived access tokens and long-lived refresh tokens. Manages session persistence via Cloudflare D1 (SQLite).
-3. **Product registry** — authoritative list of all WokSpec products (Studio, Chopsticks, WokPost, Eral) with their URLs and health check endpoints.
+<<<<<<< HEAD
+3. **Product registry** — authoritative list of all WokSpec products (Studio, Chopsticks, WokHei, Nikita) with their URLs and health check endpoints.
+=======
+3. **Product registry** — authoritative list of all WokSpec products (Studio, Chopsticks, WokPost, Nikita) with their URLs and health check endpoints.
+>>>>>>> 863b868 (chore: rename WokPost to WokHei)
 4. **Aggregate health status** — probes all products and returns a unified `ok | degraded | down` status.
 5. **Bookings** — Stripe Checkout for WokSpec consultation slots, with HMAC-verified webhook processing.
 
@@ -78,7 +82,7 @@ Do not remove, rename, or change the type of any of these claims.
 
 CORS origins are an explicit allowlist in `src/index.ts`:
 ```typescript
-origin: ['https://wokspec.org', 'https://www.wokspec.org', 'https://eral.wokspec.org'],
+origin: ['https://wokspec.org', 'https://www.wokspec.org', 'https://nikita.wokspec.org'],
 ```
 
 **Never replace this with a wildcard `*`** — doing so would allow any website to make credentialed requests to WokAPI and potentially steal session cookies.
@@ -259,13 +263,13 @@ WokAPI implements the Authorization Code flow for all three providers. The flow 
 
 ### Redirect Extension Mode
 
-When `redirect_extension=true` is passed, tokens are appended as URL params to the callback URL instead of set as cookies. This supports the Eral browser extension and any cross-origin integration where cookies cannot be shared:
+When `redirect_extension=true` is passed, tokens are appended as URL params to the callback URL instead of set as cookies. This supports the Nikita browser extension and any cross-origin integration where cookies cannot be shared:
 
 ```
-redirect_to=https://eral.wokspec.org/auth/callback?accessToken=...&refreshToken=...
+redirect_to=https://nikita.wokspec.org/auth/callback?accessToken=...&refreshToken=...
 ```
 
-This is also used when `redirect_to` is a non-`wokspec.org` origin (e.g., `eral.wokspec.org`).
+This is also used when `redirect_to` is a non-`wokspec.org` origin (e.g., `nikita.wokspec.org`).
 
 ### State Parameter Structure
 
@@ -380,7 +384,11 @@ interface WokProduct {
 | `wokgen` | Studio | studio.wokspec.org | live |
 | `chopsticks` | Chopsticks | chopsticks.wokspec.org | live |
 | `wokhei` | WokHei | hei.wokspec.org | live |
+<<<<<<< HEAD
 | `eral` | Eral | eral.wokspec.org | live |
+=======
+| `nikita` | Nikita | nikita.wokspec.org | live |
+>>>>>>> 863b868 (chore: rename WokPost to WokHei)
 
 ### Health Probing
 
@@ -422,7 +430,7 @@ if (!payload) return unauthorized();
 
 ### Method 2: Extension / Cross-Origin (redirect_extension=true)
 
-The Eral browser extension and similar cross-origin integrations receive tokens as URL parameters at their callback URL. They store tokens locally and present the access token as a bearer token or cookie on subsequent requests.
+The Nikita browser extension and similar cross-origin integrations receive tokens as URL parameters at their callback URL. They store tokens locally and present the access token as a bearer token or cookie on subsequent requests.
 
 ### The `requireAuth()` Middleware
 
@@ -702,7 +710,7 @@ Apply with: `wrangler d1 execute wokspec-auth --file src/db/schema.sql --remote`
 origin: [
   'https://wokspec.org',
   'https://www.wokspec.org',
-  'https://eral.wokspec.org',
+  'https://nikita.wokspec.org',
   'https://yourproduct.wokspec.org',  // Add here
 ],
 ```
@@ -730,7 +738,7 @@ Access tokens should be short-lived (minutes to hours). Refresh tokens should be
 The CORS allowlist must be an explicit set of origins. Never use `*` on a credentialed endpoint. The current allowlist:
 - `https://wokspec.org`
 - `https://www.wokspec.org`
-- `https://eral.wokspec.org`
+- `https://nikita.wokspec.org`
 
 ### Webhook HMAC Verification
 

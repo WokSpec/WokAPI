@@ -14,7 +14,7 @@
 - Cloudflare account with Workers, D1, and KV enabled
 - `wrangler` CLI installed and authenticated (`wrangler login`)
 - Stripe account with webhook endpoint configured
-- Eral deployed and accessible at `https://eral.wokspec.org`
+- Nikita deployed and accessible at `https://nikita.wokspec.org`
 
 ---
 
@@ -45,7 +45,7 @@ wrangler secret put STRIPE_SECRET_KEY    # from Stripe dashboard
 wrangler secret put STRIPE_WEBHOOK_SECRET  # from Stripe webhook config
 wrangler secret put GITHUB_CLIENT_ID
 wrangler secret put GITHUB_CLIENT_SECRET
-wrangler secret put ERAL_URL             # https://eral.wokspec.org
+wrangler secret put ERAL_URL             # https://nikita.wokspec.org
 ```
 
 ### 5. Deploy

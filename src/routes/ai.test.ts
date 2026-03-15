@@ -44,14 +44,14 @@ describe('POST /v1/ai/chat', () => {
       method: 'POST',
       body: JSON.stringify({ message: 'hi' }),
     }, {
-      ERAL_API_URL: 'https://mock-eral.api/v1/ai',
+      ERAL_API_URL: 'https://mock-nikita.api/v1/ai',
       JWT_SECRET: 'secret',
       KV_SESSIONS: { get: vi.fn(), put: vi.fn() },
     });
 
     expect(res.status).toBe(200);
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      'https://mock-eral.api/v1/ai/chat',
+      'https://mock-nikita.api/v1/ai/chat',
       expect.objectContaining({
         method: 'POST',
         headers: expect.any(Headers),
@@ -72,7 +72,7 @@ describe('POST /v1/ai/chat', () => {
     const res = await app.request('/v1/ai/chat', {
       method: 'POST',
     }, {
-      ERAL_API_URL: 'https://mock-eral.api/v1/ai',
+      ERAL_API_URL: 'https://mock-nikita.api/v1/ai',
       JWT_SECRET: 'secret',
       KV_SESSIONS: { get: vi.fn(), put: vi.fn() },
     });
