@@ -1,4 +1,7 @@
-# WokAPI
+# WokAPI (WokSpec org)
+
+> Repo of record: https://github.com/wokspec/wokapi  
+> Other products: WokHei/Studio stay in WokSpec; Autiladus → https://github.com/autiladus/autiladus; Nikita/nqita → https://github.com/nqita/nqita
 
 Core API for WokSpec. Handles auth, sessions, payments, and AI routing across all WokSpec products.
 
