@@ -152,7 +152,7 @@ billing.post('/webhook', async (c) => {
         }).catch(() => {});
       }
     }
-    // Handle other types as needed (e.g. WokGen Pro)
+    // Handle other types as needed (e.g. Studio Pro)
   }
 
   return c.json({ data: { received: true }, error: null });

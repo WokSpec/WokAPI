@@ -15,13 +15,13 @@ const SITE_URL = 'https://wokspec.org';
 const ALLOWED_REDIRECT_ORIGINS = [
   'https://wokspec.org',
   'https://www.wokspec.org',
-  'https://wokgen.wokspec.org',
-  'https://wokpost.wokspec.org',
+  'https://studio.wokspec.org',
+  'https://hei.wokspec.org',
   'https://chopsticks.wokspec.org',
   'https://eral.wokspec.org',
-  'https://vecto.wokspec.org',
+  'https://studio.wokspec.org',
   'https://dilu.wokspec.org',
-  'https://tools.wokspec.org',
+  'https://studio.wokspec.org',
 ];
 
 function sanitizeRedirectTo(redirectTo: string | null | undefined): string {

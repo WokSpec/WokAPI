@@ -15,7 +15,7 @@ describe('WokAPI Registry & Health', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ projects: any[] }>();
     expect(body.projects.length).toBeGreaterThan(0);
-    expect(body.projects.find(p => p.slug === 'wokgen')).toBeDefined();
+    expect(body.projects.find(p => p.slug === 'studio')).toBeDefined();
   });
 
   it('GET /v1/status aggregates health correctly', async () => {

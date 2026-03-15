@@ -37,7 +37,7 @@
 
 1. **OAuth authentication** — handles the full OAuth2 flows for GitHub, Google, and Discord. Issues WokSpec-branded JWTs after successful authentication.
 2. **JWT issuance and refresh** — mints short-lived access tokens and long-lived refresh tokens. Manages session persistence via Cloudflare D1 (SQLite).
-3. **Product registry** — authoritative list of all WokSpec products (WokGen, Chopsticks, WokPost, Eral) with their URLs and health check endpoints.
+3. **Product registry** — authoritative list of all WokSpec products (Studio, Chopsticks, WokPost, Eral) with their URLs and health check endpoints.
 4. **Aggregate health status** — probes all products and returns a unified `ok | degraded | down` status.
 5. **Bookings** — Stripe Checkout for WokSpec consultation slots, with HMAC-verified webhook processing.
 
@@ -242,7 +242,7 @@ WokAPI implements the Authorization Code flow for all three providers. The flow 
 ### Flow Steps
 
 ```
-1. Client → GET /v1/auth/{provider}?redirect_to=https://wokgen.wokspec.org
+1. Client → GET /v1/auth/{provider}?redirect_to=https://studio.wokspec.org
 2. WokAPI: validate redirect_to against ALLOWED_REDIRECT_ORIGINS
 3. WokAPI: generate state = btoa(JSON.stringify({ redirectTo, redirectExtension, nonce: uuid }))
 4. WokAPI: store state in KV with 5-min TTL
@@ -363,7 +363,7 @@ The product registry is a static array in `src/index.ts`. It is the authoritativ
 
 ```typescript
 interface WokProduct {
-  slug: string;        // Unique identifier, e.g. "wokgen"
+  slug: string;        // Unique identifier, e.g.  "studio"
   name: string;        // Display name
   description: string; // Short description
   url: string;         // Product URL
@@ -377,9 +377,9 @@ interface WokProduct {
 
 | Slug | Name | URL | Status |
 |------|------|-----|--------|
-| `wokgen` | WokGen | wokgen.wokspec.org | live |
+| `wokgen` | Studio | studio.wokspec.org | live |
 | `chopsticks` | Chopsticks | chopsticks.wokspec.org | live |
-| `wokpost` | WokPost | wokpost.wokspec.org | live |
+| `wokhei` | WokHei | hei.wokspec.org | live |
 | `eral` | Eral | eral.wokspec.org | live |
 
 ### Health Probing
@@ -407,7 +407,7 @@ GET /health             → fast WokAPI self-health (no external calls)
 
 After the OAuth flow, WokAPI sets `wokspec_session` and `wokspec_refresh` cookies on the response. Web apps within `*.wokspec.org` receive these cookies automatically (SameSite=Lax means the cookies travel on top-level cross-site navigations but not on AJAX).
 
-To verify a user in a downstream app (e.g., WokGen's middleware):
+To verify a user in a downstream app (e.g., Studio's middleware):
 
 ```typescript
 // Extract the wokspec_session cookie
