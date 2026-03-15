@@ -30,27 +30,28 @@ export async function upsertUser(
 ): Promise<AuthUser> {
   const existing = input.email
     ? await db
-        .prepare('SELECT id, email, username, display_name, avatar_url FROM users WHERE email = ?')
+        .prepare('SELECT id, email, username, display_name, avatar_url, role, org FROM users WHERE email = ?')
         .bind(input.email)
         .first<AuthUser>()
-    : null;
+        : null;
 
-  if (existing) {
-    await db
-      .prepare('UPDATE users SET display_name = ?, avatar_url = ?, updated_at = datetime(\'now\') WHERE id = ?')
-      .bind(input.displayName, input.avatarUrl, existing.id)
-      .run();
-    return {
-      ...existing,
-      display_name: input.displayName,
-      avatar_url: input.avatarUrl,
-    };
-  }
+        if (existing) {
+        await db
+        .prepare('UPDATE users SET display_name = ?, avatar_url = ?, updated_at = datetime(\'now\') WHERE id = ?')
+        .bind(input.displayName, input.avatarUrl, existing.id)
+        .run();
+        return {
+        ...existing,
+        display_name: input.displayName,
+        avatar_url: input.avatarUrl,
+        };
+        }
 
-  const created = await db
-    .prepare(
-      'INSERT INTO users (email, display_name, avatar_url) VALUES (?, ?, ?) RETURNING id, email, username, display_name, avatar_url',
-    )
+        const created = await db
+        .prepare(
+        'INSERT INTO users (email, display_name, avatar_url) VALUES (?, ?, ?) RETURNING id, email, username, display_name, avatar_url, role, org',
+        )
+
     .bind(input.email, input.displayName, input.avatarUrl)
     .first<AuthUser>();
 
@@ -112,7 +113,7 @@ export async function deleteSession(db: D1Database, sessionId: string): Promise<
 
 export async function findUserById(db: D1Database, userId: string): Promise<AuthUser | null> {
   const row = await db
-    .prepare('SELECT id, email, username, display_name, avatar_url FROM users WHERE id = ?')
+    .prepare('SELECT id, email, username, display_name, avatar_url, role, org FROM users WHERE id = ?')
     .bind(userId)
     .first<AuthUser>();
   return row ?? null;

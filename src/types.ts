@@ -28,4 +28,6 @@ export interface AuthUser {
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  role: 'admin' | 'user' | 'client';
+  org: string | null;
 }

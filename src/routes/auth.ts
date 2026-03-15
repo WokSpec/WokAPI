@@ -19,6 +19,9 @@ const ALLOWED_REDIRECT_ORIGINS = [
   'https://wokpost.wokspec.org',
   'https://chopsticks.wokspec.org',
   'https://eral.wokspec.org',
+  'https://vecto.wokspec.org',
+  'https://dilu.wokspec.org',
+  'https://tools.wokspec.org',
 ];
 
 function sanitizeRedirectTo(redirectTo: string | null | undefined): string {
@@ -197,7 +200,11 @@ auth.get('/me', rateLimit('auth'), async (c) => {
     return c.json({ data: null, error: { code: 'UNAUTHORIZED', message: 'Invalid session', status: 401 } }, 401);
   }
 
-  const user = await findUserById(c.env.DB, payload.sub);
+  const user = await c.env.DB
+    .prepare('SELECT id, email, username, display_name, avatar_url, role, org FROM users WHERE id = ?')
+    .bind(payload.sub)
+    .first<AuthUser>();
+
   if (!user) {
     return c.json({ data: null, error: { code: 'UNAUTHORIZED', message: 'User not found', status: 401 } }, 401);
   }

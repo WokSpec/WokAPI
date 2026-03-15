@@ -61,7 +61,15 @@ export async function verifyJWT(
 }
 
 export async function signAccessToken(
-  user: { id: string; email?: string | null; username?: string | null; display_name?: string | null },
+  user: {
+    id: string;
+    email?: string | null;
+    username?: string | null;
+    display_name?: string | null;
+    avatar_url?: string | null;
+    role?: string | null;
+    org?: string | null;
+  },
   secret: string,
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
@@ -71,6 +79,11 @@ export async function signAccessToken(
       email: user.email ?? null,
       username: user.username ?? null,
       display_name: user.display_name ?? null,
+      avatar_url: user.avatar_url ?? null,
+      role: user.role ?? 'user',
+      org: user.org ?? null,
+      iss: 'https://api.wokspec.org',
+      aud: 'https://wokspec.org',
       iat: now,
       exp: now + 60 * 15,
     },

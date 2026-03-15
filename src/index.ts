@@ -21,8 +21,8 @@ interface WokProduct {
 
 const PRODUCTS: WokProduct[] = [
   {
-    slug: 'wokweb',
-    name: 'WokWeb',
+    slug: 'wokspec',
+    name: 'WokSpec',
     description: 'Main WokSpec web platform and landing site.',
     url: 'https://wokspec.org',
     health_url: 'https://wokspec.org',
@@ -134,9 +134,19 @@ const app = new Hono();
 app.use(
   '*',
   cors({
-    origin: ['https://wokspec.org', 'https://www.wokspec.org', 'https://eral.wokspec.org'],
+    origin: [
+      'https://wokspec.org',
+      'https://www.wokspec.org',
+      'https://eral.wokspec.org',
+      'https://wokgen.wokspec.org',
+      'https://vecto.wokspec.org',
+      'https://dilu.wokspec.org',
+      'https://tools.wokspec.org',
+      'https://wokpost.wokspec.org',
+      'https://chopsticks.wokspec.org',
+    ],
     allowMethods: ['GET', 'POST', 'OPTIONS'],
-    allowHeaders: ['Content-Type'],
+    allowHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   }),
 );

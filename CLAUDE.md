@@ -59,11 +59,16 @@ Every WokSpec product verifies user identity by presenting a WokSpec JWT (issued
 
 All WokSpec apps that need to verify user identity call `GET /v1/auth/me` (or verify the `wokspec_session` cookie locally using the shared JWT secret). The response shape and the JWT payload structure are the cross-app contract. **Any change to these WILL break every downstream product.**
 
-Protected fields in the JWT payload:
+Protected fields in the JWT payload (Canonical):
 - `sub` — the user's canonical ID (UUID hex)
 - `email` — user's verified email
+- `username` — user's handle
 - `display_name` — display name
 - `avatar_url` — avatar URL
+- `role` — 'admin' | 'user' | 'client'
+- `org` — organization identifier or null
+- `iss` — 'https://api.wokspec.org'
+- `aud` — 'https://wokspec.org'
 - `iat` — issued-at timestamp
 - `exp` — expiry timestamp
 
@@ -301,8 +306,13 @@ interface OAuthState {
 {
   sub: string;         // User ID (hex UUID from D1)
   email: string;       // Verified email
+  username: string;    // User handle
   display_name: string; // Display name from OAuth provider
   avatar_url: string | null; // Avatar URL
+  role: 'admin' | 'user' | 'client';
+  org: string | null;  // Organization identifier
+  iss: 'https://api.wokspec.org';
+  aud: 'https://wokspec.org';
   iat: number;         // Issued at (Unix seconds)
   exp: number;         // Expiry (Unix seconds)
 }
@@ -736,16 +746,11 @@ All OAuth credentials, JWT secrets, and API keys are Cloudflare Worker secrets s
 
 ### Rate Limiting
 
-The `rateLimit()` middleware in `src/middleware.ts` is currently a no-op stub. For production hardening, implement it with Cloudflare KV counters:
+The `rateLimit()` middleware in `src/middleware.ts` is implemented using Cloudflare KV bucketed counters. It supports fixed-window rate limiting per IP by indexing keys with a time-based bucket (e.g., `rl:prefix:ip:timestamp_bucket`).
 
 ```typescript
-export const rateLimit = (key: string): MiddlewareHandler<{ Bindings: Env }> =>
-  async (c, next) => {
-    const ip = c.req.header('cf-connecting-ip') ?? 'unknown';
-    const rlKey = `rl:${key}:${ip}`;
-    // Increment counter in KV, check against limit
-    await next();
-  };
+// Example usage:
+auth.get('/github', rateLimit('auth', 60, 60), async (c) => { ... });
 ```
 
 ### Session Pruning

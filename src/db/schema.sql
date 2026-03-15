@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT,
   display_name TEXT,
   avatar_url TEXT,
+  role TEXT NOT NULL DEFAULT 'user',
+  org TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
