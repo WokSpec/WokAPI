@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { Env, AuthUser } from '../types';
 import { signAccessToken, generateRefreshToken, hashToken, verifyJWT } from '../lib/jwt';
 import {
   upsertUser, upsertOAuthAccount,
