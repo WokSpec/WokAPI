@@ -1,0 +1,3 @@
+Automated docs update for WokAPI
+Date: Mon Mar 16 16:23:38 UTC 2026
+Notes: Standardize README and add small docs placeholder.
