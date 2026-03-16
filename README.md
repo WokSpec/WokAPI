@@ -18,6 +18,14 @@ Core API for WokSpec. Handles auth, sessions, payments, and AI routing across al
 - Nqita (sibling org) — https://github.com/nqita/nqita
 - Autiladus (sibling org) — https://github.com/autiladus/autiladus
 
+## Repository documentation
+
+- [`PROJECT_CONTEXT.md`](./PROJECT_CONTEXT.md)
+- [`AGENT_RULES.md`](./AGENT_RULES.md)
+- [`SYSTEM_OVERVIEW.md`](./SYSTEM_OVERVIEW.md)
+- [`docs/architecture.md`](./docs/architecture.md)
+- [`docs/api.md`](./docs/api.md)
+
 
 ## Stack
 
