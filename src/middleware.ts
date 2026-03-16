@@ -18,7 +18,7 @@ export const requireAuth = (): MiddlewareHandler<{ Bindings: Env; Variables: { u
     const row = await c.env.DB
       .prepare('SELECT id, email, username, display_name, avatar_url, role, org FROM users WHERE id = ?')
       .bind(payload.sub)
-      .first<AuthUser>();
+      .first() as unknown as AuthUser;
     if (!row) return c.json({ data: null, error: { code: 'UNAUTHORIZED', message: 'User not found', status: 401 } }, 401);
 
     c.set('user', row);
