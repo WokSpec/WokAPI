@@ -6,6 +6,7 @@ import { cors } from 'hono/cors';
 import { authRouter } from './routes/auth';
 import { aiRouter } from './routes/ai';
 import { billingRouter } from './routes/billing';
+import { tokensRouter } from './routes/tokens';
 
 // ── Product registry ─────────────────────────────────────────────────────────
 
@@ -136,6 +137,7 @@ app.route('/v1/auth', authRouter);
 app.route('/v1/ai', aiRouter);
 app.route('/v1/billing', billingRouter);
 app.route('/v1/bookings', billingRouter);
+app.route('/v1/tokens', tokensRouter);
 
 // GET / — service info (HTML for browsers, JSON for API clients)
 app.get('/', (c) => {

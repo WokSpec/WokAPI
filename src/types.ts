@@ -12,14 +12,19 @@ export interface Env {
   DB: D1Database;
   D1_MAIN: D1Database;
   D1_AUTH?: D1Database;
-  // KV
+  // KV namespaces
   OAUTH_STATE: KVNamespace;
   KV_SESSIONS?: KVNamespace;
-  // Stripe / email (used by bookings)
+  TOKEN_CACHE: KVNamespace;  // hot-path cache for API key lookups
+  // Stripe / email
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   RESEND_API_KEY: string;
+  // Product service URLs
   ERAL_API_URL?: string;
+  // Plans (Stripe price IDs)
+  STRIPE_PRICE_PRO_MONTHLY?: string;
+  STRIPE_PRICE_ENTERPRISE_MONTHLY?: string;
 }
 
 export interface AuthUser {
@@ -30,4 +35,16 @@ export interface AuthUser {
   avatar_url: string | null;
   role: 'admin' | 'user' | 'client';
   org: string | null;
+  plan: 'free' | 'pro' | 'enterprise';
+  stripe_customer_id: string | null;
+}
+
+export type ApiKeyTier = 'free' | 'pro' | 'enterprise';
+
+export interface ApiKeyMeta {
+  key_id: string;
+  user_id: string;
+  plan: ApiKeyTier;
+  scopes: string[];
+  environment: 'live' | 'test';
 }
