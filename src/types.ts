@@ -20,6 +20,8 @@ export interface Env {
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   RESEND_API_KEY: string;
+  // Internal service secret (optional; required when set, skipped in local dev)
+  INTERNAL_SECRET?: string;
   // Product service URLs
   ERAL_API_URL?: string;
   // Plans (Stripe price IDs)

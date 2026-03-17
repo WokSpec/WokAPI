@@ -1,4 +1,4 @@
-// Auto-generated from src/openapi.yaml — do not edit directly
+// Auto-generated from src/openapi.yaml
 export const OPENAPI_SPEC = `openapi: "3.1.0"
 info:
   title: WokAPI
@@ -258,6 +258,69 @@ paths:
           description: Invalid request (missing name, invalid scopes)
         "403":
           description: Key limit exceeded for current plan
+
+  /v1/tokens/verify:
+    post:
+      summary: Verify token (internal M2M)
+      description: |
+        Validates a \`wok_live_\` or \`wok_test_\` API token and returns its metadata.
+        Intended for internal WokSpec services (NQITA, WokStudio). Does not count
+        as a metered request. Protected by \`X-Wok-Internal-Secret\` when \`INTERNAL_SECRET\`
+        is configured; gracefully skipped in local dev.
+      tags: [tokens]
+      security: []
+      parameters:
+        - name: X-Wok-Internal-Secret
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Shared secret required when INTERNAL_SECRET env var is set.
+        - name: X-Wok-Service
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Calling service identifier for audit logging (e.g. "nqita").
+      responses:
+        "200":
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    example: true
+                  key_id:
+                    type: string
+                  user_id:
+                    type: string
+                  plan:
+                    type: string
+                    enum: [free, pro, enterprise]
+                  scopes:
+                    type: array
+                    items:
+                      type: string
+                    example: ["read", "write"]
+                  environment:
+                    type: string
+                    enum: [live, test]
+        "401":
+          description: Token is invalid or missing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: invalid_token
 
   /v1/tokens/usage:
     get:

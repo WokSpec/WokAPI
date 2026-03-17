@@ -138,6 +138,76 @@ tokens.post('/', rateLimit('tokens'), requireAuth(), async (c) => {
   }, 201);
 });
 
+// ── POST /v1/tokens/verify — internal M2M token validation ───────────────────
+// Used by NQITA, WokStudio, and other internal services to validate a token
+// and retrieve its metadata without counting the call as a metered request.
+tokens.post('/verify', async (c) => {
+  // Optional internal secret guard
+  const internalSecret = c.env.INTERNAL_SECRET;
+  if (internalSecret) {
+    const provided = c.req.header('X-Wok-Internal-Secret');
+    if (provided !== internalSecret) {
+      return c.json({ valid: false, error: 'invalid_token' }, 401);
+    }
+  }
+
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return c.json({ valid: false, error: 'invalid_token' }, 401);
+  }
+
+  const raw = authHeader.slice(7);
+  if (!raw.startsWith('wok_live_') && !raw.startsWith('wok_test_')) {
+    return c.json({ valid: false, error: 'invalid_token' }, 401);
+  }
+
+  const encoded = new TextEncoder().encode(raw);
+  const buf = await crypto.subtle.digest('SHA-256', encoded);
+  const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  const kv = c.env.TOKEN_CACHE ?? c.env.OAUTH_STATE;
+  const cacheKey = `token_meta:${hash}`;
+
+  let meta: ApiKeyMeta | null = null;
+  const cached = await kv.get(cacheKey, 'json') as ApiKeyMeta | null;
+  if (cached) {
+    meta = cached;
+  } else {
+    const row = await c.env.DB
+      .prepare(`
+        SELECT k.id, k.user_id, k.scopes, k.environment, u.plan
+        FROM api_keys k
+        JOIN users u ON k.user_id = u.id
+        WHERE k.key_hash = ? AND k.is_active = 1
+      `)
+      .bind(hash)
+      .first<{ id: string; user_id: string; scopes: string; environment: 'live' | 'test'; plan: string }>();
+
+    if (!row) {
+      return c.json({ valid: false, error: 'invalid_token' }, 401);
+    }
+
+    meta = {
+      key_id: row.id,
+      user_id: row.user_id,
+      plan: row.plan as ApiKeyMeta['plan'],
+      scopes: row.scopes.split(',').map(s => s.trim()),
+      environment: row.environment,
+    };
+
+    await kv.put(cacheKey, JSON.stringify(meta), { expirationTtl: 300 });
+  }
+
+  return c.json({
+    valid: true,
+    key_id: meta.key_id,
+    user_id: meta.user_id,
+    plan: meta.plan,
+    scopes: meta.scopes,
+    environment: meta.environment,
+  });
+});
+
 // ── DELETE /v1/tokens/:id — revoke an API key ─────────────────────────────────
 tokens.delete('/:id', rateLimit('tokens'), requireAuth(), async (c) => {
   const user = c.get('user');
