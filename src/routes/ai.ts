@@ -6,7 +6,7 @@ const ai = new Hono<{ Bindings: Env; Variables: { user: AuthUser } }>();
 
 // Proxy AI requests to Nikita
 // The target URL should be configured via env, defaulting to Nikita's public API
-const ERAL_API_URL = 'https://nikita.wokspec.org/api/v1/ai';
+const ERAL_API_URL = 'https://nqita.wokspec.org/api/v1/ai';
 
 ai.all('/*', rateLimit('ai'), requireAuth(), async (c) => {
   const user = c.get('user');

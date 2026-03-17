@@ -16,10 +16,11 @@ const ALLOWED_REDIRECT_ORIGINS = [
   'https://wokspec.org',
   'https://www.wokspec.org',
   'https://studio.wokspec.org',
-  'https://hei.wokspec.org',
+  'https://orinadus.wokspec.org',
+  'https://nqita.wokspec.org',
   'https://chopsticks.wokspec.org',
-  'https://nikita.wokspec.org',
-  'https://dilu.wokspec.org',
+  'https://dashboard.wokspec.org',
+  'https://partners.wokspec.org',
 ];
 
 function sanitizeRedirectTo(redirectTo: string | null | undefined): string {
