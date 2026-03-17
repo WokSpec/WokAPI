@@ -1,0 +1,452 @@
+openapi: "3.1.0"
+info:
+  title: WokAPI
+  description: |
+    WokAPI is the platform API for the WokSpec ecosystem — providing authentication,
+    developer API tokens, billing, and AI routing.
+
+    ## Authentication
+
+    WokAPI supports two authentication methods:
+
+    ### Session auth (cookie)
+    Used by the WokSpec dashboard and web apps. Authenticate via GitHub or Google OAuth
+    at `/v1/auth/github` or `/v1/auth/google`. The session cookie `wokspec_session` is
+    set automatically.
+
+    ### API key auth (Bearer token)
+    For developer and programmatic access. Generate keys at `dashboard.wokspec.org/tokens`.
+
+    ```
+    Authorization: Bearer wok_live_a1b2c3d4...
+    ```
+
+    Keys are prefixed `wok_live_` (production) or `wok_test_` (sandbox).
+
+    ## Rate limits
+
+    All responses include rate limit headers:
+    - `X-RateLimit-Limit` — requests allowed per minute
+    - `X-RateLimit-Remaining` — requests remaining in current window
+    - `X-RateLimit-Reset` — Unix timestamp when the window resets
+
+    | Plan | Requests/month | Requests/minute |
+    |------|---------------|-----------------|
+    | Free | 1,000 | 10 |
+    | Pro | 100,000 | 100 |
+    | Enterprise | Unlimited | 1,000 |
+
+  version: "1.0.0"
+  contact:
+    name: WokSpec
+    url: https://wokspec.org
+    email: hello@wokspec.org
+
+servers:
+  - url: https://api.wokspec.org
+    description: Production
+
+tags:
+  - name: tokens
+    description: Developer API key management
+  - name: auth
+    description: OAuth and session management
+  - name: billing
+    description: Subscriptions and payments
+  - name: ai
+    description: AI proxy routing
+  - name: platform
+    description: Product registry and health
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: wok_live_xxx
+    SessionAuth:
+      type: apiKey
+      in: cookie
+      name: wokspec_session
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        data:
+          nullable: true
+          example: null
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: UNAUTHORIZED
+            message:
+              type: string
+              example: Valid API key required
+            status:
+              type: integer
+              example: 401
+
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: string
+          example: a1b2c3d4e5f6
+        name:
+          type: string
+          example: My production key
+        key_prefix:
+          type: string
+          example: wok_live_a1b2
+          description: First 16 characters of the key for identification
+        environment:
+          type: string
+          enum: [live, test]
+        scopes:
+          type: string
+          example: read,write
+        last_used_at:
+          type: string
+          nullable: true
+          format: date-time
+        revoked_at:
+          type: string
+          nullable: true
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        usage_this_month:
+          type: integer
+          example: 42
+
+    TierLimits:
+      type: object
+      properties:
+        maxKeys:
+          type: integer
+          example: 3
+          description: "-1 means unlimited"
+        requestsPerMonth:
+          type: integer
+          example: 1000
+          description: "-1 means unlimited"
+        requestsPerMinute:
+          type: integer
+          example: 10
+        scopes:
+          type: array
+          items:
+            type: string
+          example: ["read"]
+
+    Product:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        url:
+          type: string
+          format: uri
+        status:
+          type: string
+          enum: [live, beta, archived]
+        tags:
+          type: array
+          items:
+            type: string
+
+paths:
+  /v1/tokens:
+    get:
+      summary: List API keys
+      description: Returns all API keys for the authenticated user, including monthly usage.
+      tags: [tokens]
+      security:
+        - SessionAuth: []
+      responses:
+        "200":
+          description: List of API keys with tier limits
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      keys:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ApiKey"
+                      plan:
+                        type: string
+                        enum: [free, pro, enterprise]
+                      limits:
+                        $ref: "#/components/schemas/TierLimits"
+                  error:
+                    nullable: true
+                    example: null
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    post:
+      summary: Create API key
+      description: |
+        Creates a new API key for the authenticated user. The raw token is returned
+        **once only** and cannot be retrieved again. Store it immediately.
+      tags: [tokens]
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                  example: My app key
+                environment:
+                  type: string
+                  enum: [live, test]
+                  default: live
+                scopes:
+                  type: array
+                  items:
+                    type: string
+                    enum: [read, write, ai, admin]
+                  default: ["read"]
+                  example: ["read", "write"]
+      responses:
+        "201":
+          description: API key created. Token shown once.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: "#/components/schemas/ApiKey"
+                      - type: object
+                        properties:
+                          token:
+                            type: string
+                            example: wok_live_a1b2c3d4e5f6...
+                            description: Raw API key — store this immediately, not shown again
+                          _notice:
+                            type: string
+                            example: Store this token securely. It will not be shown again.
+        "400":
+          description: Invalid request (missing name, invalid scopes)
+        "403":
+          description: Key limit exceeded for current plan
+
+  /v1/tokens/usage:
+    get:
+      summary: Get monthly usage
+      description: Returns total and per-key request counts for the current month.
+      tags: [tokens]
+      security:
+        - SessionAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Monthly usage summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      month:
+                        type: string
+                        example: "2026-03"
+                      total_requests:
+                        type: integer
+                      limit:
+                        type: integer
+                        description: "-1 if unlimited"
+                      unlimited:
+                        type: boolean
+                      percent_used:
+                        type: integer
+                        nullable: true
+                      by_key:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            key_prefix:
+                              type: string
+                            requests:
+                              type: integer
+
+  /v1/tokens/{id}:
+    delete:
+      summary: Revoke API key
+      description: Permanently revokes an API key. Revocation takes effect immediately (KV cache is cleared).
+      tags: [tokens]
+      security:
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Key revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      revoked:
+                        type: boolean
+                        example: true
+                      id:
+                        type: string
+        "404":
+          description: Key not found
+
+  /v1/auth/github:
+    get:
+      summary: Initiate GitHub OAuth
+      tags: [auth]
+      parameters:
+        - name: redirect_to
+          in: query
+          schema:
+            type: string
+            format: uri
+      responses:
+        "302":
+          description: Redirect to GitHub OAuth
+
+  /v1/auth/me:
+    get:
+      summary: Get current user
+      tags: [auth]
+      security:
+        - SessionAuth: []
+      responses:
+        "200":
+          description: Current authenticated user
+        "401":
+          description: Not authenticated
+
+  /v1/billing/subscribe:
+    post:
+      summary: Create subscription checkout
+      description: Creates a Stripe checkout session for upgrading to Pro or Enterprise.
+      tags: [billing]
+      security:
+        - SessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plan:
+                  type: string
+                  enum: [pro, enterprise]
+                  default: pro
+      responses:
+        "200":
+          description: Checkout URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      checkoutUrl:
+                        type: string
+                        format: uri
+                      sessionId:
+                        type: string
+
+  /v1/billing/portal:
+    post:
+      summary: Get billing portal URL
+      description: Returns a Stripe customer portal URL for managing subscriptions.
+      tags: [billing]
+      security:
+        - SessionAuth: []
+      responses:
+        "200":
+          description: Portal URL
+
+  /v1/projects:
+    get:
+      summary: List WokSpec products
+      description: Public endpoint. Returns all registered products in the ecosystem.
+      tags: [platform]
+      responses:
+        "200":
+          description: Product list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+
+  /v1/status:
+    get:
+      summary: Ecosystem health status
+      description: Returns live health check results for all WokSpec services.
+      tags: [platform]
+      responses:
+        "200":
+          description: Health status for all services
+
+  /health:
+    get:
+      summary: API health
+      description: Simple health check for the API itself.
+      tags: [platform]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok

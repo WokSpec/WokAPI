@@ -1,5 +1,4 @@
 // WokAPI — canonical product registry and status aggregator for WokSpec
-// Spec: .wok/specs/wokapi-v1.yaml
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -7,6 +6,7 @@ import { authRouter } from './routes/auth';
 import { aiRouter } from './routes/ai';
 import { billingRouter } from './routes/billing';
 import { tokensRouter } from './routes/tokens';
+import { OPENAPI_SPEC } from './lib/openapi-spec';
 
 // ── Product registry ─────────────────────────────────────────────────────────
 
@@ -286,6 +286,32 @@ app.get('/v1/status/:slug', async (c) => {
     { data: check, error: null },
     check.status === 'down' ? 503 : 200,
   );
+});
+
+// GET /docs — Scalar API documentation UI
+app.get('/docs', (c) => {
+  return c.html(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WokAPI Docs</title>
+</head>
+<body>
+  <script id="api-reference" data-url="https://api.wokspec.org/openapi.yaml"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body>
+</html>`);
+});
+
+// GET /openapi.yaml — serve the OpenAPI spec
+app.get('/openapi.yaml', async (c) => {
+  // In Workers, we inline the spec as a static string (bundled at deploy time)
+  // The spec is at src/openapi.yaml and must be imported as a text asset
+  const spec = OPENAPI_SPEC;
+  return new Response(spec, {
+    headers: { 'Content-Type': 'application/yaml', 'Access-Control-Allow-Origin': '*' },
+  });
 });
 
 export default app;
