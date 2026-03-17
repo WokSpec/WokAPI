@@ -1,11 +1,12 @@
 // WokAPI — canonical product registry and status aggregator for WokSpec
-// Spec: .wok/specs/wokapi-v1.yaml
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { authRouter } from './routes/auth';
 import { aiRouter } from './routes/ai';
 import { billingRouter } from './routes/billing';
+import { tokensRouter } from './routes/tokens';
+import { OPENAPI_SPEC } from './lib/openapi-spec';
 
 // ── Product registry ─────────────────────────────────────────────────────────
 
@@ -48,49 +49,31 @@ const PRODUCTS: WokProduct[] = [
     tags: ['discord', 'bot', 'community'],
   },
   {
-    slug: 'wokhei',
-    name: 'WokHei',
-    description: 'AI-curated news and editorial signals.',
-    url: 'https://hei.wokspec.org',
-    health_url: 'https://hei.wokspec.org',
+    slug: 'orinadus',
+    name: 'Orinadus',
+    description: 'AI-powered research and author intelligence platform.',
+    url: 'https://orinadus.wokspec.org',
+    health_url: 'https://orinadus.wokspec.org',
     status: 'live',
-    tags: ['ai', 'news', 'media'],
+    tags: ['ai', 'research', 'intelligence'],
   },
   {
-    slug: 'nikita',
-    name: 'Nikita',
+    slug: 'nqita',
+    name: 'NQITA',
     description: 'AI layer that integrates across all WokSpec products and external sites.',
-    url: 'https://nikita.wokspec.org',
-    health_url: 'https://nikita.wokspec.org',
+    url: 'https://nqita.wokspec.org',
+    health_url: 'https://nqita.wokspec.org',
     status: 'live',
     tags: ['ai', 'assistant', 'integration'],
   },
   {
     slug: 'studio',
-    name: 'Studio',
-    description: 'Studior design and creative tooling.',
+    name: 'WokStudio',
+    description: 'AI creator studio for images, video, and media generation workflows.',
     url: 'https://studio.wokspec.org',
     health_url: 'https://studio.wokspec.org/api/health',
     status: 'live',
-    tags: ['design', 'vector'],
-  },
-  {
-    slug: 'dilu',
-    name: 'Dilu',
-    description: 'Creative web experience for the Dilu product surface.',
-    url: 'https://dilu.wokspec.org',
-    health_url: 'https://dilu.wokspec.org',
-    status: 'live',
-    tags: ['web', 'creative'],
-  },
-  {
-    slug: 'studio',
-    name: 'Studio',
-    description: 'Utility and console tooling for the WokSpec stack.',
-    url: 'https://studio.wokspec.org',
-    health_url: 'https://studio.wokspec.org',
-    status: 'live',
-    tags: ['tools', 'console'],
+    tags: ['ai', 'generation', 'creative'],
   },
 ];
 
@@ -138,10 +121,11 @@ app.use(
       'https://wokspec.org',
       'https://www.wokspec.org',
       'https://studio.wokspec.org',
-      'https://dilu.wokspec.org',
-      'https://hei.wokspec.org',
+      'https://orinadus.wokspec.org',
+      'https://nqita.wokspec.org',
       'https://chopsticks.wokspec.org',
-      'https://nikita.wokspec.org',
+      'https://dashboard.wokspec.org',
+      'https://partners.wokspec.org',
     ],
     allowMethods: ['GET', 'POST', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
@@ -153,6 +137,7 @@ app.route('/v1/auth', authRouter);
 app.route('/v1/ai', aiRouter);
 app.route('/v1/billing', billingRouter);
 app.route('/v1/bookings', billingRouter);
+app.route('/v1/tokens', tokensRouter);
 
 // GET / — service info (HTML for browsers, JSON for API clients)
 app.get('/', (c) => {
@@ -301,6 +286,32 @@ app.get('/v1/status/:slug', async (c) => {
     { data: check, error: null },
     check.status === 'down' ? 503 : 200,
   );
+});
+
+// GET /docs — Scalar API documentation UI
+app.get('/docs', (c) => {
+  return c.html(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WokAPI Docs</title>
+</head>
+<body>
+  <script id="api-reference" data-url="https://api.wokspec.org/openapi.yaml"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body>
+</html>`);
+});
+
+// GET /openapi.yaml — serve the OpenAPI spec
+app.get('/openapi.yaml', async (c) => {
+  // In Workers, we inline the spec as a static string (bundled at deploy time)
+  // The spec is at src/openapi.yaml and must be imported as a text asset
+  const spec = OPENAPI_SPEC;
+  return new Response(spec, {
+    headers: { 'Content-Type': 'application/yaml', 'Access-Control-Allow-Origin': '*' },
+  });
 });
 
 export default app;

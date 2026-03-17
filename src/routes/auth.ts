@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { Env, AuthUser } from '../types';
 import { signAccessToken, generateRefreshToken, hashToken, verifyJWT } from '../lib/jwt';
 import {
   upsertUser, upsertOAuthAccount,
@@ -16,10 +16,11 @@ const ALLOWED_REDIRECT_ORIGINS = [
   'https://wokspec.org',
   'https://www.wokspec.org',
   'https://studio.wokspec.org',
-  'https://hei.wokspec.org',
+  'https://orinadus.wokspec.org',
+  'https://nqita.wokspec.org',
   'https://chopsticks.wokspec.org',
-  'https://nikita.wokspec.org',
-  'https://dilu.wokspec.org',
+  'https://dashboard.wokspec.org',
+  'https://partners.wokspec.org',
 ];
 
 function sanitizeRedirectTo(redirectTo: string | null | undefined): string {
@@ -201,7 +202,7 @@ auth.get('/me', rateLimit('auth'), async (c) => {
   const user = await c.env.DB
     .prepare('SELECT id, email, username, display_name, avatar_url, role, org FROM users WHERE id = ?')
     .bind(payload.sub)
-    .first<AuthUser>();
+    .first() as unknown as AuthUser;
 
   if (!user) {
     return c.json({ data: null, error: { code: 'UNAUTHORIZED', message: 'User not found', status: 401 } }, 401);

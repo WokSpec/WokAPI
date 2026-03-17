@@ -67,7 +67,57 @@ billing.post('/checkout', rateLimit('billing'), requireAuth(), async (c) => {
   return c.json({ data: { checkoutUrl: session.url, sessionId: session.id }, error: null });
 });
 
-// ── Customer Portal ──────────────────────────────────────────────────────────
+// ── Subscription Plan Checkout ────────────────────────────────────────────────
+
+billing.post('/subscribe', rateLimit('billing'), requireAuth(), async (c) => {
+  const user = c.get('user');
+  const body = await c.req.json<{ plan?: 'pro' | 'enterprise' }>().catch(() => ({ plan: 'pro' as const }));
+
+  const plan = body.plan === 'enterprise' ? 'enterprise' : 'pro';
+  const priceId = plan === 'pro'
+    ? c.env.STRIPE_PRICE_PRO_MONTHLY
+    : c.env.STRIPE_PRICE_ENTERPRISE_MONTHLY;
+
+  if (!priceId) {
+    return c.json({ data: null, error: { code: 'CONFIG_ERROR', message: `${plan} plan not yet available`, status: 503 } }, 503);
+  }
+
+  // Reuse or create Stripe customer
+  let customerId = user.stripe_customer_id;
+  if (!customerId) {
+    const customerRes = await fetch('https://api.stripe.com/v1/customers', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${c.env.STRIPE_SECRET_KEY}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ email: user.email ?? '', 'metadata[user_id]': user.id }),
+    });
+    const customer = await customerRes.json<{ id: string }>();
+    customerId = customer.id;
+    await c.env.DB.prepare('UPDATE users SET stripe_customer_id = ? WHERE id = ?').bind(customerId, user.id).run();
+  }
+
+  const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${c.env.STRIPE_SECRET_KEY}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      'mode': 'subscription',
+      'customer': customerId,
+      'success_url': `https://dashboard.wokspec.org/tokens?upgraded=1`,
+      'cancel_url': `https://dashboard.wokspec.org/tokens`,
+      'line_items[0][price]': priceId,
+      'line_items[0][quantity]': '1',
+      'metadata[user_id]': user.id,
+      'metadata[plan]': plan,
+    }),
+  });
+
+  const session = await stripeRes.json<{ id?: string; url?: string; error?: { message: string } }>();
+  if (!session.url) {
+    return c.json({ data: null, error: { code: 'STRIPE_ERROR', message: session.error?.message ?? 'Failed to create checkout', status: 500 } }, 500);
+  }
+
+  return c.json({ data: { checkoutUrl: session.url, sessionId: session.id }, error: null });
+});
+
 
 billing.post('/portal', rateLimit('billing'), requireAuth(), async (c) => {
   const user = c.get('user');
@@ -133,9 +183,53 @@ billing.post('/webhook', async (c) => {
   }
 
   const event = JSON.parse(body);
+
+  // ── Subscription lifecycle events — sync plan to D1 ──────────────────────
+  if (event.type === 'customer.subscription.created' || event.type === 'customer.subscription.updated') {
+    const sub = event.data.object;
+    const userId = sub.metadata?.user_id;
+    if (userId) {
+      const plan = sub.metadata?.plan ?? 'pro';
+      const status = sub.status;
+      const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
+
+      // Upsert subscription record
+      await c.env.DB.prepare(`
+        INSERT INTO subscriptions (id, user_id, status, plan, current_period_end, cancel_at_period_end, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(id) DO UPDATE SET
+          status = excluded.status, plan = excluded.plan,
+          current_period_end = excluded.current_period_end,
+          cancel_at_period_end = excluded.cancel_at_period_end,
+          updated_at = excluded.updated_at
+      `).bind(sub.id, userId, status, plan, periodEnd, sub.cancel_at_period_end ? 1 : 0).run();
+
+      // Update user plan
+      const isActive = status === 'active' || status === 'trialing';
+      await c.env.DB.prepare("UPDATE users SET plan = ?, plan_expires_at = ? WHERE id = ?")
+        .bind(isActive ? plan : 'free', isActive ? periodEnd : null, userId)
+        .run();
+    }
+  }
+
+  if (event.type === 'customer.subscription.deleted') {
+    const sub = event.data.object;
+    const userId = sub.metadata?.user_id;
+    if (userId) {
+      await c.env.DB.prepare("UPDATE subscriptions SET status = 'canceled', updated_at = datetime('now') WHERE id = ?").bind(sub.id).run();
+      await c.env.DB.prepare("UPDATE users SET plan = 'free', plan_expires_at = NULL WHERE id = ?").bind(userId).run();
+    }
+  }
+
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     const metadata = session.metadata || {};
+
+    // Link stripe_customer_id to user on first checkout
+    if (session.customer && metadata.user_id) {
+      await c.env.DB.prepare("UPDATE users SET stripe_customer_id = ? WHERE id = ? AND stripe_customer_id IS NULL")
+        .bind(session.customer, metadata.user_id).run();
+    }
 
     if (metadata.type === 'consultation') {
       await c.env.D1_MAIN
@@ -152,7 +246,6 @@ billing.post('/webhook', async (c) => {
         }).catch(() => {});
       }
     }
-    // Handle other types as needed (e.g. Studio Pro)
   }
 
   return c.json({ data: { received: true }, error: null });

@@ -1,37 +1,18 @@
-CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-  email TEXT UNIQUE,
-  username TEXT,
-  display_name TEXT,
-  avatar_url TEXT,
-  role TEXT NOT NULL DEFAULT 'user',
-  org TEXT,
-  plan TEXT NOT NULL DEFAULT 'free' CHECK(plan IN ('free', 'pro', 'enterprise')),
-  stripe_customer_id TEXT,
-  plan_expires_at TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
-);
+-- Migration 001: API token infrastructure
+-- Adds plan tiers, developer API keys, usage metering, and subscription tracking.
 
-CREATE TABLE IF NOT EXISTS oauth_accounts (
-  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  provider TEXT NOT NULL CHECK(provider IN ('github', 'google', 'discord')),
-  provider_user_id TEXT NOT NULL,
-  access_token TEXT,
-  refresh_token TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  UNIQUE(provider, provider_user_id)
-);
-
-CREATE TABLE IF NOT EXISTS sessions (
-  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  expires_at TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
-);
+-- ── Extend users table ────────────────────────────────────────────────────────
+-- plan: 'free' | 'pro' | 'enterprise'
+ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'free'
+  CHECK(plan IN ('free', 'pro', 'enterprise'));
+ALTER TABLE users ADD COLUMN stripe_customer_id TEXT;
+ALTER TABLE users ADD COLUMN plan_expires_at TEXT;
 
 -- ── Developer API keys ────────────────────────────────────────────────────────
+-- key_hash: SHA-256 of the raw token — never store the raw key
+-- key_prefix: first 12 chars for display (e.g. wok_live_a1b2)
+-- scopes: comma-separated list from: read, write, ai, admin
+-- environment: 'live' (production) or 'test' (sandbox, no billing effects)
 CREATE TABLE IF NOT EXISTS api_keys (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -49,6 +30,8 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
 
 -- ── Monthly usage counters ────────────────────────────────────────────────────
+-- Incremented via INSERT OR IGNORE ... ON CONFLICT DO UPDATE using waitUntil()
+-- month: 'YYYY-MM' format for easy range queries
 CREATE TABLE IF NOT EXISTS api_usage (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   key_id TEXT NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
@@ -61,6 +44,8 @@ CREATE TABLE IF NOT EXISTS api_usage (
 CREATE INDEX IF NOT EXISTS idx_api_usage_user_month ON api_usage(user_id, month);
 
 -- ── Stripe subscription records ───────────────────────────────────────────────
+-- id is the Stripe subscription ID (sub_xxx)
+-- Synced via webhooks: customer.subscription.created/updated/deleted
 CREATE TABLE IF NOT EXISTS subscriptions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -71,3 +56,5 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);

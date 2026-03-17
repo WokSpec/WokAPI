@@ -32,7 +32,7 @@ export async function upsertUser(
     ? await db
         .prepare('SELECT id, email, username, display_name, avatar_url, role, org FROM users WHERE email = ?')
         .bind(input.email)
-        .first<AuthUser>()
+        .first() as unknown as AuthUser
         : null;
 
         if (existing) {
@@ -53,7 +53,7 @@ export async function upsertUser(
         )
 
     .bind(input.email, input.displayName, input.avatarUrl)
-    .first<AuthUser>();
+    .first() as unknown as AuthUser;
 
   if (!created) {
     throw new Error('Failed to create user');
@@ -115,7 +115,7 @@ export async function findUserById(db: D1Database, userId: string): Promise<Auth
   const row = await db
     .prepare('SELECT id, email, username, display_name, avatar_url, role, org FROM users WHERE id = ?')
     .bind(userId)
-    .first<AuthUser>();
+    .first() as unknown as AuthUser;
   return row ?? null;
 }
 

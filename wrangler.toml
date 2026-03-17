@@ -14,13 +14,19 @@ custom_domain = true
 binding = "OAUTH_STATE"
 id = "487bab854f714db8a46e50f80f51d766"
 
+# TOKEN_CACHE: hot-path KV for API key validation (5-min TTL entries)
+# Create with: wrangler kv namespace create TOKEN_CACHE
+[[kv_namespaces]]
+binding = "TOKEN_CACHE"
+id = "dfd0e1dbb6f0416c88a01d1803a7295a"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "wokspec-auth"
 database_id = "91a906ce-52b6-46db-896b-246195af781f"
 
 [vars]
-ERAL_API_URL = "https://eral.wokspec.org/api/v1"
+ERAL_API_URL = "https://nqita.wokspec.org/api/v1"
 
 # Secrets (set via `wrangler secret put`):
 # - JWT_SECRET
@@ -32,4 +38,6 @@ ERAL_API_URL = "https://eral.wokspec.org/api/v1"
 # - DISCORD_CLIENT_SECRET
 # - STRIPE_SECRET_KEY
 # - STRIPE_WEBHOOK_SECRET
+# - STRIPE_PRICE_PRO_MONTHLY       (Stripe price ID for Pro plan)
+# - STRIPE_PRICE_ENTERPRISE_MONTHLY (Stripe price ID for Enterprise plan)
 # - RESEND_API_KEY
