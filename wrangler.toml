@@ -18,7 +18,7 @@ id = "487bab854f714db8a46e50f80f51d766"
 # Create with: wrangler kv namespace create TOKEN_CACHE
 [[kv_namespaces]]
 binding = "TOKEN_CACHE"
-id = "REPLACE_WITH_TOKEN_CACHE_KV_ID"
+id = "dfd0e1dbb6f0416c88a01d1803a7295a"
 
 [[d1_databases]]
 binding = "DB"
